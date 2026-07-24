@@ -56,6 +56,13 @@ export class UI {
     this.el.modalClose.addEventListener("click", () => this.el.modal.classList.remove("open"));
     this.el.modal.addEventListener("click", e => { if (e.target === this.el.modal) this.el.modal.classList.remove("open"); });
 
+    // Escape closes the modal first, otherwise the detail panel.
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape") return;
+      if (this.el.modal.classList.contains("open")) this.el.modal.classList.remove("open");
+      else if (this.el.panel.classList.contains("open")) this.closePanel();
+    });
+
     this.renderPrecautionsBar();
   }
 

@@ -114,7 +114,9 @@ export function buildNodes() {
         emissive: 0x2fd6c0,
         emissiveIntensity: 1.4,
         roughness: 0.3,
-        metalness: 0.0
+        metalness: 0.0,
+        transparent: true, // kept true so runtime opacity dimming always renders
+        opacity: 1
       });
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(n.size, 24, 24), mat);
       mesh.position.set(...pos);

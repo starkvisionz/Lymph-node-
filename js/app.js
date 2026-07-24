@@ -105,8 +105,7 @@ function applyHighlight(zoneId) {
     const on = !activeZone || hiNodes.has(id);
     const emphasize = activeZone && hiNodes.has(id);
     r.mat.emissiveIntensity = emphasize ? 2.6 : (on ? 1.4 : 0.35);
-    r.mat.opacity = on ? 1 : 0.5;
-    r.mat.transparent = !on;
+    r.mat.opacity = on ? 1 : 0.4; // material is always transparent; vary opacity only
     r.halo.material.opacity = emphasize ? 0.95 : (on ? 0.5 : 0.12);
     if (emphasize && accent) { r.mat.emissive.copy(accent); r.halo.material.color.copy(accent); }
     else { r.mat.emissive.setHex(0x2fd6c0); r.halo.material.color.setHex(0x39e6cf); }
