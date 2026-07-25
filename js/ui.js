@@ -4,10 +4,11 @@
  * precautions. Talks to app.js through a small callback interface so the 3D
  * scene stays decoupled from the DOM.
  */
-import { ZONES, ZONE_BY_ID, SESSION_ORDER, GLOBAL_BENEFITS, PRECAUTIONS, PRINCIPLES } from "./data.js";
+import { ZONES, ZONE_BY_ID, SESSION_ORDER, PROGRAMS, PROGRAM_BY_ID, GLOBAL_BENEFITS, PRECAUTIONS, PRINCIPLES } from "./data.js";
 import { settings } from "./settings.js";
 import { Voice } from "./voice.js";
 import { KB, NODE_INFO } from "./knowledge.js";
+import { progress } from "./progress.js";
 
 export class UI {
   constructor(hooks) {
@@ -49,6 +50,8 @@ export class UI {
       motionOff: document.getElementById("motion-off"),
       motionOn: document.getElementById("motion-on"),
       voiceUnavailable: document.getElementById("voice-unavailable"),
+      programsBtn: document.getElementById("programs-btn"),
+      programsPop: document.getElementById("programs-pop"),
     };
 
     // Zone chips
@@ -78,6 +81,7 @@ export class UI {
 
     document.addEventListener("keydown", e => this._onKeydown(e));
     this._buildSettings();
+    this._buildPrograms();
     this.renderPrecautionsBar();
   }
 
@@ -86,7 +90,8 @@ export class UI {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     // Escape always closes the top-most overlay, whatever has focus.
     if (e.key === "Escape") {
-      if (!this.el.settingsPop.hidden) { this._toggleSettings(false); this.el.settingsBtn.focus(); }
+      if (!this.el.programsPop.hidden) { this._togglePrograms(false); this.el.programsBtn.focus(); }
+      else if (!this.el.settingsPop.hidden) { this._toggleSettings(false); this.el.settingsBtn.focus(); }
       else if (this.el.modal.classList.contains("open")) this.closeModal();
       else if (this.el.panel.classList.contains("open")) this.closePanel();
       return;
@@ -241,7 +246,7 @@ export class UI {
         <p class="summary">${z.summary}</p>
       </div>
 
-      ${this.session ? `<div class="session-banner">Guided session · ${this.session.idx + 1}/${this.session.order.length} regions</div>` : ""}
+      ${this.session ? `<div class="session-banner">${this.session.program ? this.session.program.name : "Guided session"} · ${this.session.idx + 1}/${this.session.order.length} regions</div>` : ""}
 
       <div class="step-active" style="--accent:${hex}">
         <div class="sa-top">
@@ -362,10 +367,12 @@ export class UI {
     this.el.startSession.textContent = "▶ Guided full session";
   }
 
-  startSession() {
-    this.session = { order: SESSION_ORDER.slice(), idx: 0 };
+  startSession(program) {
+    const p = program || PROGRAM_BY_ID.full;
+    this.session = { order: p.order.slice(), idx: 0, program: { id: p.id, name: p.name } };
     this.el.startSession.classList.add("active");
     this.el.startSession.textContent = "■ Stop session";
+    this._togglePrograms(false);
     // Nudge first-timers toward hands-free mode (once per page load).
     if (this.voice.available && !settings.get("voice") && !this._voiceTipShown) {
       this._voiceTipShown = true;
@@ -386,8 +393,47 @@ export class UI {
   }
 
   stopSession(completed) {
+    const prog = this.session && this.session.program;
     this.resetSessionState();
-    if (completed) this._toast("Session complete — great work. Hydrate! 💧");
+    if (completed) {
+      if (prog) { progress.record(prog.id, prog.name); this._refreshPrograms(); }
+      this._toast(`${prog ? prog.name : "Session"} complete — great work. Hydrate! 💧`);
+    }
+  }
+
+  /* ---------- targeted programs picker ---------- */
+  _buildPrograms() {
+    this.el.programsBtn.addEventListener("click", () => this._togglePrograms());
+    document.addEventListener("click", e => {
+      if (this.el.programsPop.hidden) return;
+      if (!this.el.programsPop.contains(e.target) && e.target !== this.el.programsBtn) this._togglePrograms(false);
+    });
+    this._refreshPrograms();
+  }
+
+  _refreshPrograms() {
+    const total = progress.total(), streak = progress.streak();
+    const head = total
+      ? `<div class="pp-head">You've completed <strong>${total}</strong> session${total === 1 ? "" : "s"}${streak > 1 ? ` · 🔥 ${streak}-day streak` : ""}</div>`
+      : `<div class="pp-head">Pick a routine for your goal — each opens the drains first.</div>`;
+    const items = PROGRAMS.map(p => {
+      const c = progress.countFor(p.id);
+      return `<button type="button" class="pp-item" role="menuitem" data-prog="${p.id}">
+        <span class="pp-top"><strong>${p.name}</strong><span class="pp-tag">${p.tag}</span></span>
+        <span class="pp-goal">${p.goal}</span>
+        ${c ? `<span class="pp-count" title="Completed ${c} time${c === 1 ? "" : "s"}">✓ ${c}</span>` : ""}
+      </button>`;
+    }).join("");
+    this.el.programsPop.innerHTML = head + items;
+    this.el.programsPop.querySelectorAll(".pp-item").forEach(b =>
+      b.addEventListener("click", () => this.startSession(PROGRAM_BY_ID[b.dataset.prog])));
+  }
+
+  _togglePrograms(force) {
+    const open = force !== undefined ? force : this.el.programsPop.hidden;
+    this.el.programsPop.hidden = !open;
+    this.el.programsBtn.setAttribute("aria-expanded", String(open));
+    if (open) requestAnimationFrame(() => this.el.programsPop.querySelector(".pp-item")?.focus());
   }
 
   /* ---------- info / safety modal ---------- */

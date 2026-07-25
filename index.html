@@ -84,7 +84,13 @@
       <p>Tap a zone — or a glowing node in the model — to begin.</p>
     </div>
     <div id="zone-list" class="zone-list"></div>
-    <button id="start-session" class="session-btn">▶ Guided full session</button>
+    <div class="rail-actions">
+      <button id="start-session" class="session-btn">▶ Guided full session</button>
+      <div class="programs-wrap">
+        <button id="programs-btn" class="session-btn ghost-btn" aria-haspopup="true" aria-expanded="false">✦ Targeted programs</button>
+        <div id="programs-pop" class="programs-pop" role="menu" aria-label="Targeted programs" hidden></div>
+      </div>
+    </div>
     <p class="rail-foot">Recommended order runs drains first, then the limbs that feed them.</p>
   </aside>
 

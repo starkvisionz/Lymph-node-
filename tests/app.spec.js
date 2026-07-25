@@ -236,3 +236,41 @@ test.describe("Knowledge base", () => {
     await expect(page.locator(".kb-tab.active")).toHaveAttribute("data-tab", "safety");
   });
 });
+
+test.describe("Programs & progress (v0.3)", () => {
+  test("programs popover lists routines and starts a targeted session", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#programs-btn");
+    await expect(page.locator("#programs-pop")).toBeVisible();
+    await expect(page.locator(".pp-item")).toHaveCount(6);
+    await page.click('.pp-item[data-prog="legs"]');
+    await expect(page.locator(".session-banner")).toContainText("Tired legs");
+    await expect(page.locator(".session-banner")).toContainText("1/4"); // 4-region program
+    await expect(page.locator("#start-session")).toContainText("Stop session");
+  });
+
+  test("Escape closes the programs popover", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#programs-btn");
+    await expect(page.locator("#programs-pop")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#programs-pop")).toBeHidden();
+  });
+
+  test("completing a program records progress (localStorage) and shows the count", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#programs-btn");
+    await page.click('.pp-item[data-prog="face"]'); // 2 zones: terminus(3) + neck(4)
+    await expect(page.locator(".session-banner")).toContainText("1/2");
+    // Walk through every step to completion with the Next shortcut.
+    for (let i = 0; i < 9; i++) await page.keyboard.press("n");
+    await expect(page.locator(".session-banner")).toHaveCount(0); // session ended
+    const total = await page.evaluate(() => {
+      try { return JSON.parse(localStorage.getItem("lymphflow.progress.v1")).total; } catch { return 0; }
+    });
+    expect(total).toBeGreaterThanOrEqual(1);
+    await page.click("#programs-btn");
+    await expect(page.locator(".pp-head")).toContainText("completed");
+    await expect(page.locator('.pp-item[data-prog="face"] .pp-count')).toBeVisible();
+  });
+});

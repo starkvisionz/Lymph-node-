@@ -37,6 +37,10 @@ lymphatic network and teaches *where* to stroke, *which direction*, *how hard*,
   reference, guidance on swollen nodes & red flags, an FAQ and a glossary. Every
   drainage zone also carries an **Anatomy & clinical** section detailing each
   node cluster it targets (what it drains, node counts, clinical notes).
+- **Targeted programs & progress** — condition-specific routines (Face & sinus,
+  Tired legs, Post-workout arms, Desk/travel, Gentle daily, Full body reset),
+  each a guided session over the right zones in the right order. Completed
+  sessions are tracked in `localStorage` with per-program counts and a day-streak.
 
 ## Run it
 
@@ -63,6 +67,7 @@ js/ui.js              # panels, steps, timers, guided session, safety modal
 js/settings.js        # user preferences (voice/sound/motion), localStorage
 js/voice.js           # Web Speech (SpeechSynthesis) wrapper for narration
 js/knowledge.js       # knowledge base: node anatomy, system, regions, FAQ, glossary
+js/progress.js        # session-completion history & streak, localStorage
 vendor/three/         # Three.js r160 (vendored, so it works fully offline)
 assets/favicon.svg
 ```
