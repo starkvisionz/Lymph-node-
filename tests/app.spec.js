@@ -142,3 +142,63 @@ test.describe("Lymph Flow", () => {
     await context.close();
   });
 });
+
+test.describe("Settings & keyboard (v0.2)", () => {
+  test("settings popover opens, closes on Escape, and persists to localStorage", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#settings-btn");
+    await expect(page.locator("#settings-pop")).toBeVisible();
+    await page.click("#set-sound");   // sound: on -> off
+    await page.click("#motion-on");   // motion: auto -> on
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#settings-pop")).toBeHidden();
+
+    await page.reload();
+    await expect(page.locator("#loader")).toHaveClass(/hidden/, { timeout: 15000 });
+    await page.click("#settings-btn");
+    await expect(page.locator("#set-sound")).not.toBeChecked();
+    await expect(page.locator("#motion-on")).toBeChecked();
+  });
+
+  test("number keys select zones; Space and N/P drive the steps", async ({ page }) => {
+    await bootReady(page);
+    await page.keyboard.press("3"); // 3rd zone = axillary
+    await expect(page.locator("#detail-panel")).toHaveClass(/open/);
+    await expect(page.locator('.zone-chip[data-id="axillary"]')).toHaveClass(/active/);
+
+    const t1 = await page.locator("#sa-title").textContent();
+    await page.keyboard.press("n");
+    await expect(page.locator("#sa-title")).not.toHaveText(t1);
+    await page.keyboard.press("p");
+    await expect(page.locator("#sa-title")).toHaveText(t1);
+
+    await page.keyboard.press(" ");
+    await expect(page.locator("#btn-play")).toContainText("Pause");
+    await page.keyboard.press(" ");
+    await expect(page.locator("#btn-play")).toContainText("Start step");
+  });
+
+  test("voice toggle reflects Web Speech availability", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#settings-btn");
+    const voice = page.locator("#set-voice");
+    if (await voice.isDisabled()) {
+      await expect(page.locator("#voice-unavailable")).toBeVisible();
+    } else {
+      await voice.check();
+      await expect(voice).toBeChecked();
+    }
+  });
+
+  test("forcing reduced motion via settings does not error", async ({ page }) => {
+    const errors = attachDiagnostics(page);
+    await bootReady(page);
+    await page.click("#settings-btn");
+    await page.click("#motion-on");
+    await page.keyboard.press("Escape");
+    await page.click('.zone-chip[data-id="leg"]');
+    await page.waitForTimeout(800);
+    const real = errors.filter(e => !/favicon/i.test(e));
+    expect(real, real.join("\n")).toEqual([]);
+  });
+});

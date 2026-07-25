@@ -49,6 +49,28 @@
         <button id="view-reset" class="seg icon" title="Reset view" aria-label="Reset view">⟳</button>
       </div>
       <button id="info-btn" class="ghost">How it works</button>
+      <div class="settings-wrap">
+        <button id="settings-btn" class="ghost icon-btn" aria-haspopup="true" aria-expanded="false" aria-label="Settings">⚙</button>
+        <div id="settings-pop" class="settings-pop" role="menu" aria-label="Settings" hidden>
+          <h3>Settings</h3>
+          <label class="switch-row">
+            <span><span class="sw-title">🔊 Voice guidance</span><span class="sw-sub">Speak each step aloud (hands-free)</span></span>
+            <input type="checkbox" id="set-voice" role="menuitemcheckbox" />
+          </label>
+          <label class="switch-row">
+            <span><span class="sw-title">🔔 Sound cues</span><span class="sw-sub">Chime when a step completes</span></span>
+            <input type="checkbox" id="set-sound" role="menuitemcheckbox" />
+          </label>
+          <fieldset class="motion-row">
+            <legend>Animation</legend>
+            <label><input type="radio" name="motion" id="motion-auto" value="auto" /> Follow system</label>
+            <label><input type="radio" name="motion" id="motion-off" value="off" /> Full motion</label>
+            <label><input type="radio" name="motion" id="motion-on" value="on" /> Reduce / pause</label>
+          </fieldset>
+          <p class="settings-note" id="voice-unavailable" hidden>Voice isn't available in this browser.</p>
+          <p class="settings-note">⌨︎ Shortcuts: <kbd>1</kbd>–<kbd>8</kbd> zones · <kbd>Space</kbd> play/pause · <kbd>N</kbd>/<kbd>P</kbd> next/prev · <kbd>Esc</kbd> close</p>
+        </div>
+      </div>
     </div>
   </header>
 

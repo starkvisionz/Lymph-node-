@@ -6,11 +6,19 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { buildFigure, buildNodes, buildVessels, buildStrokeArrow, buildPumpRing, buildBreathe } from "./body.js";
 import { UI } from "./ui.js";
 import { ZONE_BY_ID, NODES } from "./data.js";
+import { settings } from "./settings.js";
 
-/* Respect the user's reduced-motion preference across the animation loop. */
+/* Effective reduced-motion = the user's explicit override, else the OS setting. */
 const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-let reduceMotion = motionQuery.matches;
-motionQuery.addEventListener?.("change", e => { reduceMotion = e.matches; });
+function effectiveReduceMotion() {
+  const m = settings.get("motion");
+  if (m === "on") return true;
+  if (m === "off") return false;
+  return motionQuery.matches; // "auto"
+}
+let reduceMotion = effectiveReduceMotion();
+motionQuery.addEventListener?.("change", () => { reduceMotion = effectiveReduceMotion(); });
+settings.subscribe(k => { if (k === "motion") reduceMotion = effectiveReduceMotion(); });
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });

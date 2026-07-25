@@ -5,6 +5,8 @@
  * scene stays decoupled from the DOM.
  */
 import { ZONES, ZONE_BY_ID, SESSION_ORDER, GLOBAL_BENEFITS, PRECAUTIONS, PRINCIPLES } from "./data.js";
+import { settings } from "./settings.js";
+import { Voice } from "./voice.js";
 
 export class UI {
   constructor(hooks) {
@@ -17,6 +19,8 @@ export class UI {
     this.session = null; // { order, idx } when a guided full session runs
     this._lastFocus = null; // restored when the modal closes
     this._trapHandler = null;
+    this.voice = new Voice();
+    this._voiceTipShown = false;
     this._build();
   }
 
@@ -36,6 +40,14 @@ export class UI {
       modalBody: document.getElementById("modal-body"),
       modalClose: document.getElementById("modal-close"),
       hint: document.getElementById("hint"),
+      settingsBtn: document.getElementById("settings-btn"),
+      settingsPop: document.getElementById("settings-pop"),
+      setVoice: document.getElementById("set-voice"),
+      setSound: document.getElementById("set-sound"),
+      motionAuto: document.getElementById("motion-auto"),
+      motionOff: document.getElementById("motion-off"),
+      motionOn: document.getElementById("motion-on"),
+      voiceUnavailable: document.getElementById("voice-unavailable"),
     };
 
     // Zone chips
@@ -63,14 +75,73 @@ export class UI {
     this.el.modalClose.addEventListener("click", () => this.closeModal());
     this.el.modal.addEventListener("click", e => { if (e.target === this.el.modal) this.closeModal(); });
 
-    // Escape closes the modal first, otherwise the detail panel.
-    document.addEventListener("keydown", e => {
-      if (e.key !== "Escape") return;
-      if (this.el.modal.classList.contains("open")) this.closeModal();
-      else if (this.el.panel.classList.contains("open")) this.closePanel();
-    });
-
+    document.addEventListener("keydown", e => this._onKeydown(e));
+    this._buildSettings();
     this.renderPrecautionsBar();
+  }
+
+  /* ---------- keyboard shortcuts ---------- */
+  _onKeydown(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Escape always closes the top-most overlay, whatever has focus.
+    if (e.key === "Escape") {
+      if (!this.el.settingsPop.hidden) { this._toggleSettings(false); this.el.settingsBtn.focus(); }
+      else if (this.el.modal.classList.contains("open")) this.closeModal();
+      else if (this.el.panel.classList.contains("open")) this.closePanel();
+      return;
+    }
+    // All other shortcuts must never hijack typing / form controls.
+    const tag = (e.target && e.target.tagName) || "";
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+    // 1–8 jump to a zone
+    if (/^[1-8]$/.test(e.key)) {
+      const z = ZONES[parseInt(e.key, 10) - 1];
+      if (z) { this.selectZone(z.id, true); this.el.zoneList.querySelector(`.zone-chip[data-id="${z.id}"]`)?.focus(); }
+      return;
+    }
+    // Step controls only make sense with an open panel
+    if (!this.el.panel.classList.contains("open")) return;
+    if (e.key === " " || e.code === "Space") { e.preventDefault(); this.toggleStepTimer(); }
+    else if (e.key === "n" || e.key === "N") { this.gotoStep(this.stepIndex + 1); }
+    else if (e.key === "p" || e.key === "P") { this.gotoStep(this.stepIndex - 1); }
+  }
+
+  /* ---------- settings popover ---------- */
+  _buildSettings() {
+    const s = this.el;
+    // Voice availability
+    if (!this.voice.available) {
+      s.setVoice.checked = false;
+      s.setVoice.disabled = true;
+      s.voiceUnavailable.hidden = false;
+    } else {
+      s.setVoice.checked = !!settings.get("voice");
+    }
+    s.setSound.checked = !!settings.get("sound");
+    const motion = settings.get("motion");
+    ({ auto: s.motionAuto, off: s.motionOff, on: s.motionOn })[motion].checked = true;
+
+    s.settingsBtn.addEventListener("click", () => this._toggleSettings());
+    s.setVoice.addEventListener("change", () => {
+      settings.set("voice", s.setVoice.checked);
+      if (s.setVoice.checked) this._speakCurrentStep(); else this.voice.cancel();
+    });
+    s.setSound.addEventListener("change", () => settings.set("sound", s.setSound.checked));
+    [["auto", s.motionAuto], ["off", s.motionOff], ["on", s.motionOn]].forEach(([val, el]) =>
+      el.addEventListener("change", () => { if (el.checked) settings.set("motion", val); }));
+
+    // Close on outside click
+    document.addEventListener("click", e => {
+      if (this.el.settingsPop.hidden) return;
+      if (!this.el.settingsPop.contains(e.target) && e.target !== this.el.settingsBtn) this._toggleSettings(false);
+    });
+  }
+
+  _toggleSettings(force) {
+    const open = force !== undefined ? force : this.el.settingsPop.hidden;
+    this.el.settingsPop.hidden = !open;
+    this.el.settingsBtn.setAttribute("aria-expanded", String(open));
+    if (open) requestAnimationFrame(() => this.el.settingsPop.querySelector("input")?.focus());
   }
 
   /* ---------- precaution banner ---------- */
@@ -108,11 +179,21 @@ export class UI {
 
   closePanel() {
     this.resetSessionState(); // also stops timers / pending auto-advance
+    this.voice.cancel();
     this.hooks.onStrokeStop();
     this.activeZoneId = null;
     this._syncChips();
     this.el.panel.classList.remove("open");
     this.hooks.onSelectZone(null);
+  }
+
+  /* Speak the active step when voice guidance is enabled. */
+  _speakCurrentStep() {
+    if (!settings.get("voice") || !this.voice.available) return;
+    const z = ZONE_BY_ID[this.activeZoneId];
+    if (!z) return;
+    const step = z.steps[this.stepIndex];
+    if (step) this.voice.speak(`${step.title}. ${step.instruction}`);
   }
 
   /* ---------- detail panel ---------- */
@@ -181,6 +262,8 @@ export class UI {
 
     // Kick the stroke animation for this step
     this.hooks.onStep(z, step);
+    // Narrate the step when hands-free voice guidance is on
+    this._speakCurrentStep();
   }
 
   gotoStep(i) {
@@ -248,6 +331,7 @@ export class UI {
   // panel close, completion) — no duplicated reset logic, no stray timers.
   resetSessionState() {
     this.stopTimer(); // clears interval + pending auto-advance + play button
+    this.voice.cancel();
     this.session = null;
     this.el.startSession.classList.remove("active");
     this.el.startSession.textContent = "▶ Guided full session";
@@ -257,6 +341,11 @@ export class UI {
     this.session = { order: SESSION_ORDER.slice(), idx: 0 };
     this.el.startSession.classList.add("active");
     this.el.startSession.textContent = "■ Stop session";
+    // Nudge first-timers toward hands-free mode (once per page load).
+    if (this.voice.available && !settings.get("voice") && !this._voiceTipShown) {
+      this._voiceTipShown = true;
+      this._toast("Tip: enable 🔊 Voice guidance in ⚙ Settings for hands-free steps.");
+    }
     this.selectZone(this.session.order[0], false);
   }
 
@@ -356,6 +445,7 @@ export class UI {
     this._toastT = setTimeout(() => t.classList.remove("show"), 2600);
   }
   _beep() {
+    if (!settings.get("sound")) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const o = ctx.createOscillator(), g = ctx.createGain();
