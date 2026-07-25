@@ -12,3 +12,9 @@ Thumbs.db
 *.log
 /tmp/
 scratchpad/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

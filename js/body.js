@@ -229,6 +229,44 @@ export function buildStrokeArrow() {
   return group;
 }
 
+/* Pulsing ring used for "pump" steps (press–release in place). */
+export function buildPumpRing() {
+  const group = new THREE.Group();
+  group.visible = false;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.07, 12, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(ring);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTexture(), color: 0xffd166, transparent: true, opacity: 0.6,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  }));
+  halo.scale.set(2.4, 2.4, 1);
+  group.add(halo);
+  group.userData.ring = ring;
+  return group;
+}
+
+/* Expanding/contracting glow used for "breathing" steps. */
+export function buildBreathe() {
+  const group = new THREE.Group();
+  group.visible = false;
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.6, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0x8ff0e0, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(sphere);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTexture(), color: 0x6ff0dd, transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  }));
+  halo.scale.set(3.2, 3.2, 1);
+  group.add(halo);
+  group.userData.sphere = sphere;
+  return group;
+}
+
 /* Resolve a THREE curve for a pathway id, mirroring X for an "_L" variant
  * whose base pathway is stored as "_R" (or side-0). Used by the stroke arrow. */
 export function pathCurve(id) {

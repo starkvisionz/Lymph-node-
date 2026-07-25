@@ -3,9 +3,14 @@
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { buildFigure, buildNodes, buildVessels, buildStrokeArrow, pathCurve } from "./body.js";
+import { buildFigure, buildNodes, buildVessels, buildStrokeArrow, buildPumpRing, buildBreathe } from "./body.js";
 import { UI } from "./ui.js";
 import { ZONE_BY_ID, NODES } from "./data.js";
+
+/* Respect the user's reduced-motion preference across the animation loop. */
+const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+let reduceMotion = motionQuery.matches;
+motionQuery.addEventListener?.("change", e => { reduceMotion = e.matches; });
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -53,8 +58,16 @@ root.add(nodeGroup);
 const { group: vesselGroup, registry: vesselReg } = buildVessels();
 root.add(vesselGroup);
 
-const strokeArrow = buildStrokeArrow();
-root.add(strokeArrow);
+/* ---- demonstration-FX pools (added to root so they rotate with the body) ---- */
+const arrowPool = Array.from({ length: 3 }, () => { const a = buildStrokeArrow(); root.add(a); return a; });
+const ringPool = Array.from({ length: 4 }, () => { const r = buildPumpRing(); root.add(r); return r; });
+const breatheFx = buildBreathe();
+root.add(breatheFx);
+function hideAllFx() {
+  arrowPool.forEach(a => (a.visible = false));
+  ringPool.forEach(r => (r.visible = false));
+  breatheFx.visible = false;
+}
 
 // Ground reflection-ish disc
 const disc = new THREE.Mesh(
@@ -67,9 +80,6 @@ root.add(disc);
 
 /* ---- highlight state ---- */
 let activeZone = null;
-let strokeCurve = null;
-let strokeT = 0;
-let strokeReverse = false;
 
 function nodeIdsForZone(zone) {
   // Expand a zone's node keys to the actual per-side registry ids present.
@@ -125,29 +135,61 @@ function applyHighlight(zoneId) {
   }
 }
 
-/* ---- stroke arrow along a step path ---- */
-function startStroke(zone, step) {
-  strokeArrow.visible = false;
-  strokeCurve = null;
-  if (!step.strokePath) return;
-  // pick a representative curve (prefer the zone-side pathway present)
-  let id = step.strokePath;
-  if (!vesselReg[id] && vesselReg[id + "_R"]) id = id + "_R";
-  const curve = pathCurve(id) || (vesselReg[id] && vesselReg[id].curve);
-  if (!curve) return;
-  strokeCurve = curve;
-  strokeT = 0;
-  strokeReverse = false;
-  strokeArrow.visible = true;
+/* ---- per-step demonstration visuals ------------------------------------
+ * Each step declares a `visual` describing HOW to move; we render the matching
+ * indicator so the animation reflects the actual instruction rather than always
+ * showing a travelling arrow along the whole region path.                    */
+let vfx = { type: "none", arrows: [], rings: [], circle: null };
+
+function nodePositions(nodeKeys) {
+  const out = [];
+  for (const key of nodeKeys || []) {
+    const n = NODES[key];
+    if (!n) continue;
+    const ids = n.side === 0 ? [key] : [key + "_R", key + "_L"];
+    for (const id of ids) if (nodeReg[id]) out.push(nodeReg[id].mesh.position.clone());
+  }
+  return out;
 }
-function stopStroke() { strokeArrow.visible = false; strokeCurve = null; }
+
+function setStepVisual(step) {
+  hideAllFx();
+  vfx = { type: "none", arrows: [], rings: [], circle: null };
+  const v = step && step.visual;
+  if (!v || v.type === "none") return;
+  vfx.type = v.type;
+
+  if (v.type === "stroke") {
+    const ids = (v.paths || []).filter(id => vesselReg[id]);
+    ids.slice(0, arrowPool.length).forEach((id, i) => {
+      const arrow = arrowPool[i];
+      arrow.visible = true;
+      vfx.arrows.push({ arrow, curve: vesselReg[id].curve, range: v.range || [0, 1], t: 0 });
+    });
+  } else if (v.type === "pump" || v.type === "hold") {
+    nodePositions(v.nodes).slice(0, ringPool.length).forEach((pos, i) => {
+      const ring = ringPool[i];
+      ring.position.copy(pos);
+      ring.visible = true;
+      vfx.rings.push(ring);
+    });
+  } else if (v.type === "circle") {
+    const arrow = arrowPool[0];
+    arrow.visible = true;
+    vfx.circle = { arrow, center: new THREE.Vector3(...v.center), radius: v.radius || 0.7, t: 0 };
+  } else if (v.type === "breathing") {
+    breatheFx.position.set(...v.center);
+    breatheFx.visible = true;
+  }
+}
+function clearVisual() { hideAllFx(); vfx = { type: "none", arrows: [], rings: [], circle: null }; }
 
 /* ---- UI wiring ---- */
 const ui = new UI({
-  onSelectZone: (id) => { applyHighlight(id); if (!id) stopStroke(); },
+  onSelectZone: (id) => { applyHighlight(id); if (!id) clearVisual(); },
   onView: (which) => viewTo(which),
-  onStep: (zone, step) => startStroke(zone, step),
-  onStrokeStop: stopStroke,
+  onStep: (zone, step) => setStepVisual(step),
+  onStrokeStop: clearVisual,
 });
 
 /* ---- camera moves ---- */
@@ -220,42 +262,74 @@ window.addEventListener("resize", () => {
 const clock = new THREE.Clock();
 const _pos = new THREE.Vector3();
 const _tan = new THREE.Vector3();
+const _look = new THREE.Vector3();
+
+/* Animate whichever demonstration visual the current step declared. Under
+ * reduced motion, indicators are shown but held still. */
+function updateVisual(dt, t) {
+  const move = reduceMotion ? 0 : dt;
+  const pulse = reduceMotion ? 1 : 0.85 + Math.sin(t * 6) * 0.15;
+
+  if (vfx.type === "stroke") {
+    for (const a of vfx.arrows) {
+      a.t = reduceMotion ? 0.5 : (a.t + move * 0.3) % 1;
+      const [lo, hi] = a.range;
+      const tt = Math.min(0.999, lo + (hi - lo) * a.t);
+      a.curve.getPointAt(tt, _pos);
+      a.curve.getTangentAt(tt, _tan);
+      a.arrow.position.copy(_pos);
+      a.arrow.lookAt(_look.copy(_pos).add(_tan));
+      a.arrow.scale.setScalar(pulse);
+    }
+  } else if (vfx.type === "pump") {
+    const k = reduceMotion ? 1 : (Math.sin(t * 3) * 0.5 + 0.5); // press–release
+    for (const g of vfx.rings) {
+      g.scale.setScalar(0.7 + k * 0.6);
+      g.userData.ring.material.opacity = 0.45 + k * 0.5;
+    }
+  } else if (vfx.type === "hold") {
+    const s = reduceMotion ? 1 : 0.95 + Math.sin(t * 1.6) * 0.05;
+    for (const g of vfx.rings) g.scale.setScalar(s);
+  } else if (vfx.type === "circle" && vfx.circle) {
+    const c = vfx.circle;
+    if (!reduceMotion) c.t = (c.t + move * 0.45) % 1;
+    const ang = -c.t * Math.PI * 2; // clockwise as seen from the front
+    _pos.set(c.center.x + Math.cos(ang) * c.radius, c.center.y + Math.sin(ang) * c.radius, c.center.z);
+    _tan.set(Math.sin(ang), -Math.cos(ang), 0); // clockwise tangent
+    c.arrow.position.copy(_pos);
+    c.arrow.lookAt(_look.copy(_pos).add(_tan));
+    c.arrow.scale.setScalar(pulse);
+  } else if (vfx.type === "breathing") {
+    const k = reduceMotion ? 0.6 : (Math.sin(t * 1.2) * 0.5 + 0.5);
+    breatheFx.scale.setScalar(0.7 + k * 0.9);
+    breatheFx.userData.sphere.material.opacity = 0.18 + k * 0.22;
+  }
+}
 
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
   const t = clock.elapsedTime;
 
-  // node pulse
+  // node pulse (frozen when the user prefers reduced motion)
   for (const r of Object.values(nodeReg)) {
-    const s = 1 + Math.sin(t * 2.4 + r.mesh.position.y) * (r.userData_emphasize ? 0.14 : 0.06);
+    const s = reduceMotion ? 1 : 1 + Math.sin(t * 2.4 + r.mesh.position.y) * (r.userData_emphasize ? 0.14 : 0.06);
     r.mesh.scale.setScalar(s);
   }
 
-  // vessel flow particles
+  // vessel flow particles (advance only when motion is allowed)
   for (const r of Object.values(vesselReg)) {
     const attr = r.particles.geometry.getAttribute("position");
     const speed = (r._speed || 0.12);
     for (let i = 0; i < r.count; i++) {
-      r.offsets[i] = (r.offsets[i] + dt * speed) % 1;
+      if (!reduceMotion) r.offsets[i] = (r.offsets[i] + dt * speed) % 1;
       r.curve.getPointAt(r.offsets[i], _pos);
       attr.setXYZ(i, _pos.x, _pos.y, _pos.z);
     }
     attr.needsUpdate = true;
   }
 
-  // stroke arrow
-  if (strokeArrow.visible && strokeCurve) {
-    strokeT += dt * 0.22;
-    if (strokeT >= 1) { strokeT = 0; } // loop the demonstration stroke
-    const tt = Math.min(0.999, strokeT);
-    strokeCurve.getPointAt(tt, _pos);
-    strokeCurve.getTangentAt(tt, _tan);
-    strokeArrow.position.copy(_pos);
-    strokeArrow.lookAt(_pos.clone().add(_tan));
-    const pulse = 0.8 + Math.sin(t * 6) * 0.2;
-    strokeArrow.scale.setScalar(pulse);
-  }
+  updateVisual(dt, t);
 
   // camera tween
   if (camTween) {
@@ -266,10 +340,10 @@ function animate() {
     if (camTween.t >= 1) camTween = null;
   }
 
-  // gentle idle auto-rotate when nothing selected
-  if (!activeZone && !camTween) {
+  // gentle idle auto-rotate when nothing selected (disabled under reduced motion)
+  if (!activeZone && !camTween && !reduceMotion) {
     root.rotation.y += dt * 0.05;
-  } else {
+  } else if (activeZone || camTween) {
     root.rotation.y += (0 - root.rotation.y) * Math.min(1, dt * 2);
   }
 

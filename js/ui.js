@@ -12,8 +12,11 @@ export class UI {
     this.activeZoneId = null;
     this.stepIndex = 0;
     this.timer = null;
+    this.autoAdvanceTimeout = null; // pending step auto-advance (cleared on stop)
     this.remaining = 0;
     this.session = null; // { order, idx } when a guided full session runs
+    this._lastFocus = null; // restored when the modal closes
+    this._trapHandler = null;
     this._build();
   }
 
@@ -51,15 +54,19 @@ export class UI {
     this.el.viewFront.addEventListener("click", () => { this.hooks.onView("front"); this._setViewSeg("front"); });
     this.el.viewBack.addEventListener("click", () => { this.hooks.onView("back"); this._setViewSeg("back"); });
     this.el.viewReset.addEventListener("click", () => { this.hooks.onView("reset"); this._setViewSeg("front"); });
-    this.el.startSession.addEventListener("click", () => this.startSession());
+    // Single guided-session handler that toggles on the current state, so the
+    // permanent listener and per-state logic never both fire from one click.
+    this.el.startSession.addEventListener("click", () => {
+      if (this.session) this.stopSession(); else this.startSession();
+    });
     this.el.infoBtn.addEventListener("click", () => this.openInfo());
-    this.el.modalClose.addEventListener("click", () => this.el.modal.classList.remove("open"));
-    this.el.modal.addEventListener("click", e => { if (e.target === this.el.modal) this.el.modal.classList.remove("open"); });
+    this.el.modalClose.addEventListener("click", () => this.closeModal());
+    this.el.modal.addEventListener("click", e => { if (e.target === this.el.modal) this.closeModal(); });
 
     // Escape closes the modal first, otherwise the detail panel.
     document.addEventListener("keydown", e => {
       if (e.key !== "Escape") return;
-      if (this.el.modal.classList.contains("open")) this.el.modal.classList.remove("open");
+      if (this.el.modal.classList.contains("open")) this.closeModal();
       else if (this.el.panel.classList.contains("open")) this.closePanel();
     });
 
@@ -100,7 +107,7 @@ export class UI {
   }
 
   closePanel() {
-    this.stopTimer();
+    this.resetSessionState(); // also stops timers / pending auto-advance
     this.hooks.onStrokeStop();
     this.activeZoneId = null;
     this._syncChips();
@@ -116,11 +123,13 @@ export class UI {
     const hex = "#" + z.color.toString(16).padStart(6, "0");
 
     const stepsList = z.steps.map((s, i) => `
-      <li class="step ${i === this.stepIndex ? "current" : ""} ${i < this.stepIndex ? "done" : ""}"
-          data-i="${i}">
-        <span class="step-n">${i + 1}</span>
-        <span class="step-t">${s.title}${s.reps ? ` <em>×${s.reps}</em>` : ""}</span>
-        <span class="step-d">${s.duration}s</span>
+      <li class="step-li">
+        <button type="button" class="step ${i === this.stepIndex ? "current" : ""} ${i < this.stepIndex ? "done" : ""}"
+          data-i="${i}" aria-current="${i === this.stepIndex ? "step" : "false"}">
+          <span class="step-n">${i + 1}</span>
+          <span class="step-t">${s.title}${s.reps ? ` <em>×${s.reps}</em>` : ""}</span>
+          <span class="step-d">${s.duration}s</span>
+        </button>
       </li>`).join("");
 
     this.el.panelBody.innerHTML = `
@@ -206,14 +215,18 @@ export class UI {
       if (this.remaining <= 0) {
         this.stopTimer();
         this._beep();
-        // auto-advance
-        setTimeout(() => this.gotoStep(this.stepIndex + 1), 400);
+        // auto-advance (tracked so it can be cancelled if the user stops/exits)
+        this.autoAdvanceTimeout = setTimeout(() => {
+          this.autoAdvanceTimeout = null;
+          this.gotoStep(this.stepIndex + 1);
+        }, 400);
       }
     }, 1000);
   }
 
   stopTimer() {
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.autoAdvanceTimeout) { clearTimeout(this.autoAdvanceTimeout); this.autoAdvanceTimeout = null; }
     this._setPlay(false);
   }
 
@@ -231,11 +244,19 @@ export class UI {
   }
 
   /* ---------- guided full session ---------- */
+  // One shared teardown for all session exits (manual zone pick, stop button,
+  // panel close, completion) — no duplicated reset logic, no stray timers.
+  resetSessionState() {
+    this.stopTimer(); // clears interval + pending auto-advance + play button
+    this.session = null;
+    this.el.startSession.classList.remove("active");
+    this.el.startSession.textContent = "▶ Guided full session";
+  }
+
   startSession() {
     this.session = { order: SESSION_ORDER.slice(), idx: 0 };
     this.el.startSession.classList.add("active");
     this.el.startSession.textContent = "■ Stop session";
-    this.el.startSession.onclick = () => this.stopSession();
     this.selectZone(this.session.order[0], false);
   }
 
@@ -251,11 +272,7 @@ export class UI {
   }
 
   stopSession(completed) {
-    this.session = null;
-    this.stopTimer();
-    this.el.startSession.classList.remove("active");
-    this.el.startSession.textContent = "▶ Guided full session";
-    this.el.startSession.onclick = () => this.startSession();
+    this.resetSessionState();
     if (completed) this._toast("Session complete — great work. Hydrate! 💧");
   }
 
@@ -292,10 +309,36 @@ export class UI {
       diagnosis or treatment. If you have swelling that is new, one-sided, painful, hot or red — or
       any diagnosed medical condition — seek professional care before self-massaging.</p>
     `;
+    this._lastFocus = document.activeElement;
     this.el.modal.classList.add("open");
-    if (tab === "safety") {
-      requestAnimationFrame(() => document.getElementById("safety-anchor")?.scrollIntoView({ behavior: "smooth" }));
+    // Trap focus inside the dialog and move focus to the close button.
+    this._trapHandler = e => this._trapFocus(e);
+    this.el.modal.addEventListener("keydown", this._trapHandler);
+    requestAnimationFrame(() => {
+      this.el.modalClose.focus();
+      if (tab === "safety") document.getElementById("safety-anchor")?.scrollIntoView({ behavior: "smooth" });
+    });
+  }
+
+  closeModal() {
+    if (!this.el.modal.classList.contains("open")) return;
+    this.el.modal.classList.remove("open");
+    if (this._trapHandler) {
+      this.el.modal.removeEventListener("keydown", this._trapHandler);
+      this._trapHandler = null;
     }
+    if (this._lastFocus && typeof this._lastFocus.focus === "function") this._lastFocus.focus();
+  }
+
+  _trapFocus(e) {
+    if (e.key !== "Tab") return;
+    const focusable = [...this.el.modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )].filter(el => el.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
   /* ---------- misc ---------- */

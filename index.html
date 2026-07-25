@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#05141a" />
   <meta name="description" content="Interactive 3D lymphatic drainage (MLD) self-massage guide — drainage zones, animated stroke directions, step-by-step instructions, timers, benefits and safety." />
   <title>Lymph Flow · 3D Lymphatic Drainage Massage Guide</title>
@@ -20,8 +20,9 @@
   </script>
 </head>
 <body>
-  <!-- 3D canvas -->
-  <canvas id="scene"></canvas>
+  <!-- 3D canvas (decorative; the keyboard-accessible zone list is the
+       equivalent way to select every drainage region) -->
+  <canvas id="scene" aria-hidden="true"></canvas>
 
   <!-- Loading overlay -->
   <div id="loader">
@@ -42,10 +43,10 @@
       </div>
     </div>
     <div class="top-actions">
-      <div class="view-toggle" role="group" aria-label="View">
+      <div class="view-toggle" role="group" aria-label="Model view">
         <button id="view-front" class="seg active">Front</button>
         <button id="view-back" class="seg">Back</button>
-        <button id="view-reset" class="seg icon" title="Reset view">⟳</button>
+        <button id="view-reset" class="seg icon" title="Reset view" aria-label="Reset view">⟳</button>
       </div>
       <button id="info-btn" class="ghost">How it works</button>
     </div>
@@ -78,9 +79,9 @@
   </section>
 
   <!-- Info / safety modal -->
-  <div id="modal" class="modal">
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-label="How lymphatic drainage massage works and safety information">
     <div class="modal-card">
-      <button id="modal-close" class="modal-close" aria-label="Close">✕</button>
+      <button id="modal-close" class="modal-close" aria-label="Close dialog">✕</button>
       <div id="modal-body" class="modal-body"></div>
     </div>
   </div>

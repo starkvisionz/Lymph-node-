@@ -2,15 +2,27 @@
  * data.js — Lymphatic anatomy + Manual Lymphatic Drainage (MLD) guidance
  * ---------------------------------------------------------------------------
  * Coordinate system (world units, Three.js): Y up, +Z toward viewer (front),
- * X to the anatomical model's left = viewer's right is negative... we simply
- * treat +X as one side and -X as the other. Figure spans roughly y[-8, 8].
+ * X to one side (mirrored for the other). Figure spans roughly y[-8, 8].
  *
- * Everything the 3D scene and the UI render is data-driven from this file so
- * the anatomy, pathways and instructions stay in one place.
+ * Everything the 3D scene and the UI render is data-driven from this file.
  *
- * MEDICAL NOTE: This is an educational self-massage guide based on widely
- * taught MLD (Vodder/Casley-Smith style) principles. It is not a substitute
- * for a certified lymphedema therapist or a physician.
+ * Each step carries an explicit `visual` describing how the movement should be
+ * demonstrated in 3D, so the animation matches the instruction:
+ *   { type: "stroke", paths:[ids], range:[a,b] }  travelling arrow(s) along a
+ *                                                  sub-range of a drainage path
+ *   { type: "pump",   nodes:[nodeKeys] }           pulsing ring(s) at node(s)
+ *   { type: "circle", center:[x,y,z], radius }      arrow circling (clockwise)
+ *   { type: "breathing", center:[x,y,z] }           expanding/contracting glow
+ *   { type: "hold",   nodes:[nodeKeys] }            static locate-the-spot glow
+ *   { type: "none" }                                no arrow (can't be shown)
+ *
+ * `range` is a [start,end] fraction of the path (0 = distal, 1 = terminus) so a
+ * "forearm" step animates only the forearm segment, not the whole arm route.
+ * `paths`/`nodes` list BOTH sides where a movement is bilateral.
+ *
+ * MEDICAL NOTE: educational self-massage guide based on widely taught MLD
+ * (Vodder/Casley-Smith style) principles. Not a substitute for a certified
+ * lymphedema therapist or a physician.
  */
 
 export const PRINCIPLES = [
@@ -90,9 +102,8 @@ export const PRECAUTIONS = [
 ];
 
 /*
- * Node clusters. `side` of 0 = midline, ±1 = symmetric pair (built for both
- * sides automatically by mirroring X). `view` controls which camera face
- * shows it prominently. size is the glowing sphere radius.
+ * Node clusters. `side` of 0 = midline, ±1 = symmetric pair (mirrored on X by
+ * the renderer). size is the glowing sphere radius.
  */
 export const NODES = {
   // ---- FRONT ----
@@ -116,9 +127,9 @@ export const NODES = {
 };
 
 /*
- * Pathways are ordered point lists from DISTAL → TERMINUS. Flow particles and
- * the stroke arrow animate along this direction — which is exactly the
- * direction the user should stroke. `side` mirrors X like nodes.
+ * Pathways: ordered point lists from DISTAL → TERMINUS. Flow particles and
+ * stroke arrows animate along this direction — the direction the user strokes.
+ * `side` mirrors X like nodes.
  */
 export const PATHWAYS = {
   neck_R: {
@@ -151,11 +162,18 @@ export const PATHWAYS = {
   }
 };
 
+/* Approximate sub-ranges (fractions of a path, distal→terminus) for limb
+ * segments, so a step animates just its segment. Tuned by eye, not exact. */
+const SEG = {
+  arm:  { hand: [0.00, 0.20], forearm: [0.18, 0.42], elbow: [0.35, 0.60], upper: [0.55, 0.82], full: [0.00, 1.00] },
+  leg:  { foot: [0.00, 0.14], calf: [0.12, 0.36], knee: [0.34, 0.55], thigh: [0.50, 0.74], toGroin: [0.00, 0.80], full: [0.00, 1.00] },
+  neck: { upper: [0.00, 0.42], jaw: [0.00, 0.52], full: [0.00, 1.00] }
+};
+
 /*
- * Drainage zones — the interactive units. Each references node & pathway ids,
- * a camera focus, benefits/precautions specific to the region, and an ordered
- * step list. `strokePath` points to a PATHWAYS key the stroke arrow rides;
- * `sub` = 'both' builds the stroke for both sides.
+ * Drainage zones — the interactive units. Each references node & pathway ids
+ * for the static highlight, a camera focus, benefits/precautions, and an
+ * ordered step list. Each step's `visual` drives the demonstration animation.
  */
 export const ZONES = [
   {
@@ -166,14 +184,13 @@ export const ZONES = [
     color: 0x37e0c4,
     nodeIds: ["terminus"],
     pathwayIds: [],
-    focus: { az: 0, el: 0.05, dist: 20, target: [0, 4.6, 0] },
     summary: "The supraclavicular hollows above your collarbones are where ALL body lymph finally empties. Opening them first creates suction for everything downstream.",
     benefits: ["Primes the whole system", "Relieves neck & sinus pressure", "Sets the calm, slow rhythm"],
     precautions: ["Stay light and superficial", "Avoid the pulsing artery at the front of the throat"],
     steps: [
-      { title: "Find the hollows", instruction: "Place your fingertips flat in the soft hollows just above each collarbone, near the base of the neck.", duration: 15, reps: 0 },
-      { title: "Pump inward & down", instruction: "Gently press the skin inward and downward toward the centre, then release. Skin stretches, no sliding. Rhythm: press–release once per second.", duration: 30, reps: 15, strokePath: "trunk_center", sub: "center" },
-      { title: "Both sides", instruction: "Repeat on the opposite collarbone hollow. This is the 'drain' — you'll return here to finish every region.", duration: 30, reps: 15 }
+      { title: "Find the hollows", instruction: "Place your fingertips flat in the soft hollows just above each collarbone, near the base of the neck.", duration: 15, reps: 0, visual: { type: "hold", nodes: ["terminus"] } },
+      { title: "Pump inward & down", instruction: "Gently press the skin inward and downward toward the centre, then release. Skin stretches, no sliding. Rhythm: press–release once per second.", duration: 30, reps: 15, visual: { type: "pump", nodes: ["terminus"] } },
+      { title: "Both sides", instruction: "Repeat on the opposite collarbone hollow. This is the 'drain' — you'll return here to finish every region.", duration: 30, reps: 15, visual: { type: "pump", nodes: ["terminus"] } }
     ]
   },
   {
@@ -184,15 +201,14 @@ export const ZONES = [
     color: 0x4fd1ff,
     nodeIds: ["cervical_up", "cervical_low", "submandibular", "preauricular"],
     pathwayIds: ["neck_R"],
-    focus: { az: 0, el: 0.1, dist: 18, target: [0, 5.6, 0] },
     summary: "Nodes run in a chain down each side of the neck, draining the face, scalp and sinuses down to the terminus.",
     benefits: ["Reduces facial puffiness & sinus congestion", "Eases tension headaches", "Brightens under-eye area"],
     precautions: ["Never press hard on the neck", "Skip if glands are swollen from an active infection"],
     steps: [
-      { title: "Behind the ears", instruction: "Flat fingers behind the ears, stretch the skin gently downward toward the neck. Release. ×5.", duration: 20, reps: 5, strokePath: "neck_R", sub: "both" },
-      { title: "Down the sides", instruction: "Both hands flat on the sides of the neck. Stretch skin downward toward the collarbones in slow 'J' strokes. ×10.", duration: 30, reps: 10, strokePath: "neck_R", sub: "both" },
-      { title: "Under the jaw", instruction: "Sweep from the centre of the chin along the underside of the jaw toward the ear, then down the neck. ×5 each side.", duration: 30, reps: 5, strokePath: "neck_R", sub: "both" },
-      { title: "Empty to terminus", instruction: "Finish with 5 gentle pumps in the collarbone hollows to clear everything you just moved.", duration: 15, reps: 5, strokePath: "trunk_center", sub: "center" }
+      { title: "Behind the ears", instruction: "Flat fingers behind the ears, stretch the skin gently downward toward the neck. Release. ×5.", duration: 20, reps: 5, visual: { type: "stroke", paths: ["neck_R", "neck_L"], range: SEG.neck.upper } },
+      { title: "Down the sides", instruction: "Both hands flat on the sides of the neck. Stretch skin downward toward the collarbones in slow 'J' strokes. ×10.", duration: 30, reps: 10, visual: { type: "stroke", paths: ["neck_R", "neck_L"], range: SEG.neck.full } },
+      { title: "Under the jaw", instruction: "Sweep from the centre of the chin along the underside of the jaw toward the ear, then down the neck. ×5 each side.", duration: 30, reps: 5, visual: { type: "stroke", paths: ["neck_R", "neck_L"], range: SEG.neck.jaw } },
+      { title: "Empty to terminus", instruction: "Finish with 5 gentle pumps in the collarbone hollows to clear everything you just moved.", duration: 15, reps: 5, visual: { type: "pump", nodes: ["terminus"] } }
     ]
   },
   {
@@ -203,15 +219,14 @@ export const ZONES = [
     color: 0x7c9cff,
     nodeIds: ["axillary"],
     pathwayIds: [],
-    focus: { az: 0.25, el: 0.05, dist: 20, target: [1.4, 4.0, 0] },
     summary: "The armpit nodes are the main drain for each arm, the chest wall and the breast. Pump them open before working the arm.",
     benefits: ["Drains arm & chest fluid", "Eases post-workout arm heaviness", "Common focus after breast surgery (with therapist guidance)"],
     precautions: ["Cleared with your surgeon if you've had node removal on that side", "Very light — this area is sensitive"],
     steps: [
-      { title: "Cup the armpit", instruction: "Place the opposite hand flat into the hollow of the armpit, fingers wrapping slightly.", duration: 15, reps: 0 },
-      { title: "Pump upward", instruction: "Gently press up and in toward the top of the armpit, then release. Once per second. ×15.", duration: 30, reps: 15 },
-      { title: "Chest sweep to armpit", instruction: "Flat hand sweeps from the breastbone outward across the chest toward the same-side armpit. ×10.", duration: 30, reps: 10 },
-      { title: "Switch sides", instruction: "Repeat on the other armpit and chest.", duration: 45, reps: 15 }
+      { title: "Cup the armpit", instruction: "Place the opposite hand flat into the hollow of the armpit, fingers wrapping slightly.", duration: 15, reps: 0, visual: { type: "hold", nodes: ["axillary"] } },
+      { title: "Pump upward", instruction: "Gently press up and in toward the top of the armpit, then release. Once per second. ×15.", duration: 30, reps: 15, visual: { type: "pump", nodes: ["axillary"] } },
+      { title: "Chest sweep to armpit", instruction: "Flat hand sweeps from the breastbone outward across the chest toward the same-side armpit. ×10.", duration: 30, reps: 10, visual: { type: "pump", nodes: ["axillary"] } },
+      { title: "Switch sides", instruction: "Repeat on the other armpit and chest.", duration: 45, reps: 15, visual: { type: "pump", nodes: ["axillary"] } }
     ]
   },
   {
@@ -222,17 +237,16 @@ export const ZONES = [
     color: 0x9d7cff,
     nodeIds: ["cubital", "axillary"],
     pathwayIds: ["arm_R"],
-    focus: { az: 0.3, el: 0.0, dist: 22, target: [2.0, 2.0, 0] },
     summary: "Clear the armpit first, then move fluid up the arm in stages — upper arm before forearm before hand — so each segment drains into an emptied one above it.",
     benefits: ["Relieves swollen hands & fingers", "Helps after long flights or standing", "Reduces wrist & forearm puffiness"],
     precautions: ["Work top-down to open the path, then stroke bottom-up", "Stop if you feel numbness or pins & needles"],
     steps: [
-      { title: "Open the armpit", instruction: "5 pumps in the armpit to make room (see Axillary).", duration: 15, reps: 5 },
-      { title: "Upper arm", instruction: "Wrap the opposite hand around the upper arm and stretch the skin upward toward the armpit. ×7.", duration: 25, reps: 7, strokePath: "arm_R", sub: "both" },
-      { title: "Elbow (cubital)", instruction: "Gently pump the soft inner-elbow crease, then stroke upward to the upper arm. ×7.", duration: 25, reps: 7, strokePath: "arm_R", sub: "both" },
-      { title: "Forearm", instruction: "Stroke from wrist up the forearm toward the elbow. ×7.", duration: 25, reps: 7, strokePath: "arm_R", sub: "both" },
-      { title: "Hand & fingers", instruction: "Milk each finger toward the hand, then stroke the back of the hand up to the wrist. ×5.", duration: 25, reps: 5, strokePath: "arm_R", sub: "both" },
-      { title: "Long finish", instruction: "One long light sweep from hand all the way up to the armpit. ×5. Then switch arms.", duration: 30, reps: 5, strokePath: "arm_R", sub: "both" }
+      { title: "Open the armpit", instruction: "5 pumps in the armpit to make room (see Axillary).", duration: 15, reps: 5, visual: { type: "pump", nodes: ["axillary"] } },
+      { title: "Upper arm", instruction: "Wrap the opposite hand around the upper arm and stretch the skin upward toward the armpit. ×7.", duration: 25, reps: 7, visual: { type: "stroke", paths: ["arm_R", "arm_L"], range: SEG.arm.upper } },
+      { title: "Elbow (cubital)", instruction: "Gently pump the soft inner-elbow crease, then stroke upward to the upper arm. ×7.", duration: 25, reps: 7, visual: { type: "stroke", paths: ["arm_R", "arm_L"], range: SEG.arm.elbow } },
+      { title: "Forearm", instruction: "Stroke from wrist up the forearm toward the elbow. ×7.", duration: 25, reps: 7, visual: { type: "stroke", paths: ["arm_R", "arm_L"], range: SEG.arm.forearm } },
+      { title: "Hand & fingers", instruction: "Milk each finger toward the hand, then stroke the back of the hand up to the wrist. ×5.", duration: 25, reps: 5, visual: { type: "stroke", paths: ["arm_R", "arm_L"], range: SEG.arm.hand } },
+      { title: "Long finish", instruction: "One long light sweep from hand all the way up to the armpit. ×5. Then switch arms.", duration: 30, reps: 5, visual: { type: "stroke", paths: ["arm_R", "arm_L"], range: SEG.arm.full } }
     ]
   },
   {
@@ -243,15 +257,14 @@ export const ZONES = [
     color: 0x37e0c4,
     nodeIds: ["cisterna", "abdominal"],
     pathwayIds: ["trunk_center"],
-    focus: { az: 0, el: -0.05, dist: 20, target: [0, 2.0, 0] },
     summary: "Deep diaphragmatic breathing pumps the cisterna chyli and thoracic duct — the body's largest lymph vessels. Combined with a gentle clockwise abdominal massage it clears the central highway.",
     benefits: ["Drives whole-body lymph return", "Eases bloating & sluggish digestion", "Deeply relaxing / vagal tone"],
     precautions: ["Skip deep abdominal work in pregnancy", "Avoid after recent abdominal surgery until cleared", "Not over a full stomach"],
     steps: [
-      { title: "Belly breaths", instruction: "Hands on belly. Inhale slowly through the nose, letting the belly rise; exhale longer through the mouth. ×5 slow breaths.", duration: 40, reps: 5 },
-      { title: "Clockwise circles", instruction: "Flat hands make slow, light circles around the navel in a CLOCKWISE direction (following the colon). ×10.", duration: 40, reps: 10 },
-      { title: "Draw up the midline", instruction: "Stroke gently upward from the lower belly toward the ribs, encouraging fluid up toward the chest. ×8.", duration: 30, reps: 8, strokePath: "trunk_center", sub: "center" },
-      { title: "Breathe to finish", instruction: "3 more deep breaths to pump everything upward to the terminus.", duration: 25, reps: 3 }
+      { title: "Belly breaths", instruction: "Hands on belly. Inhale slowly through the nose, letting the belly rise; exhale longer through the mouth. ×5 slow breaths.", duration: 40, reps: 5, visual: { type: "breathing", center: [0, 2.4, 1.2] } },
+      { title: "Clockwise circles", instruction: "Flat hands make slow, light circles around the navel in a CLOCKWISE direction (following the colon). ×10.", duration: 40, reps: 10, visual: { type: "circle", center: [0, 2.05, 1.35], radius: 0.7 } },
+      { title: "Draw up the midline", instruction: "Stroke gently upward from the lower belly toward the ribs, encouraging fluid up toward the chest. ×8.", duration: 30, reps: 8, visual: { type: "stroke", paths: ["trunk_center"], range: [0.0, 1.0] } },
+      { title: "Breathe to finish", instruction: "3 more deep breaths to pump everything upward to the terminus.", duration: 25, reps: 3, visual: { type: "breathing", center: [0, 2.4, 1.2] } }
     ]
   },
   {
@@ -262,15 +275,14 @@ export const ZONES = [
     color: 0x4fd1ff,
     nodeIds: ["inguinal", "abdominal"],
     pathwayIds: [],
-    focus: { az: 0.2, el: -0.1, dist: 20, target: [0.9, 0.2, 0] },
     summary: "The groin creases hold the main drain for each leg and the lower abdomen. Open them before working the legs.",
     benefits: ["Drains heavy, swollen legs", "Reduces ankle & lower-leg puffiness", "Supports pelvic fluid clearance"],
     precautions: ["Keep it light — nodes are close to the surface here", "Avoid over a hernia or recent groin surgery"],
     steps: [
-      { title: "Find the crease", instruction: "Place flat hands in the crease where the top of the thigh meets the body.", duration: 15, reps: 0 },
-      { title: "Pump inward & up", instruction: "Gently press the skin up and inward toward the centre, then release. ×15.", duration: 30, reps: 15 },
-      { title: "Lower belly to groin", instruction: "Sweep from the lower belly down and out toward each groin crease. ×10.", duration: 30, reps: 10 },
-      { title: "Both sides", instruction: "Make sure both groin creases are pumped and open before starting the leg.", duration: 20, reps: 10 }
+      { title: "Find the crease", instruction: "Place flat hands in the crease where the top of the thigh meets the body.", duration: 15, reps: 0, visual: { type: "hold", nodes: ["inguinal"] } },
+      { title: "Pump inward & up", instruction: "Gently press the skin up and inward toward the centre, then release. ×15.", duration: 30, reps: 15, visual: { type: "pump", nodes: ["inguinal"] } },
+      { title: "Lower belly to groin", instruction: "Sweep from the lower belly down and out toward each groin crease. ×10.", duration: 30, reps: 10, visual: { type: "pump", nodes: ["inguinal"] } },
+      { title: "Both sides", instruction: "Make sure both groin creases are pumped and open before starting the leg.", duration: 20, reps: 10, visual: { type: "pump", nodes: ["inguinal"] } }
     ]
   },
   {
@@ -281,17 +293,16 @@ export const ZONES = [
     color: 0x7c9cff,
     nodeIds: ["popliteal", "inguinal"],
     pathwayIds: ["leg_R"],
-    focus: { az: 0.15, el: -0.25, dist: 24, target: [1.0, -3.5, 0] },
     summary: "After opening the groin, drain the leg top-down then stroke bottom-up: thigh, then knee (front & back), then calf, then foot — each into the emptied segment above.",
     benefits: ["Relieves tired, heavy, swollen legs", "Reduces ankle oedema from standing/flights", "Eases restless legs at night"],
     precautions: ["STOP if you suspect a clot: hot, red, painful calf — see a doctor", "Work upward toward the heart, never down"],
     steps: [
-      { title: "Open the groin", instruction: "10 pumps in the groin crease first (see Groin).", duration: 20, reps: 10 },
-      { title: "Thigh", instruction: "Both hands wrap the thigh and stretch the skin upward toward the groin. ×8.", duration: 30, reps: 8, strokePath: "leg_R", sub: "both" },
-      { title: "Behind the knee", instruction: "Gently pump the soft hollow behind the knee (popliteal), then stroke up the thigh. ×7.", duration: 25, reps: 7, strokePath: "leg_R", sub: "both" },
-      { title: "Calf", instruction: "Stroke firmly-but-lightly from ankle up the calf toward the knee. ×8.", duration: 30, reps: 8, strokePath: "leg_R", sub: "both" },
-      { title: "Foot & ankle", instruction: "Stroke from the toes over the top of the foot up to the ankle. ×5.", duration: 25, reps: 5, strokePath: "leg_R", sub: "both" },
-      { title: "Long finish", instruction: "One long sweep from foot to groin. ×5. Then switch legs.", duration: 30, reps: 5, strokePath: "leg_R", sub: "both" }
+      { title: "Open the groin", instruction: "10 pumps in the groin crease first (see Groin).", duration: 20, reps: 10, visual: { type: "pump", nodes: ["inguinal"] } },
+      { title: "Thigh", instruction: "Both hands wrap the thigh and stretch the skin upward toward the groin. ×8.", duration: 30, reps: 8, visual: { type: "stroke", paths: ["leg_R", "leg_L"], range: SEG.leg.thigh } },
+      { title: "Behind the knee", instruction: "Gently pump the soft hollow behind the knee (popliteal), then stroke up the thigh. ×7.", duration: 25, reps: 7, visual: { type: "stroke", paths: ["leg_R", "leg_L"], range: SEG.leg.knee } },
+      { title: "Calf", instruction: "Stroke firmly-but-lightly from ankle up the calf toward the knee. ×8.", duration: 30, reps: 8, visual: { type: "stroke", paths: ["leg_R", "leg_L"], range: SEG.leg.calf } },
+      { title: "Foot & ankle", instruction: "Stroke from the toes over the top of the foot up to the ankle. ×5.", duration: 25, reps: 5, visual: { type: "stroke", paths: ["leg_R", "leg_L"], range: SEG.leg.foot } },
+      { title: "Long finish", instruction: "One long sweep from foot to groin. ×5. Then switch legs.", duration: 30, reps: 5, visual: { type: "stroke", paths: ["leg_R", "leg_L"], range: SEG.leg.toGroin } }
     ]
   },
   {
@@ -302,23 +313,21 @@ export const ZONES = [
     color: 0x9d7cff,
     nodeIds: ["occipital", "post_cervical", "interscapular", "lumbar", "popliteal"],
     pathwayIds: ["back_upper_R", "back_lower_R", "neck_back_R"],
-    focus: { az: Math.PI, el: 0.0, dist: 22, target: [0, 3.0, 0] },
     summary: "The back has a 'watershed': everything above the waist drains around to the armpits, everything below drains around to the groin. Stroke toward the front — you don't have to reach the middle of your own back to help it.",
     benefits: ["Eases upper-back & shoulder heaviness", "Supports lower-back fluid clearance", "Pairs well with the neck & groin work"],
     precautions: ["Use a partner or a soft ball against a wall if you can't reach", "Same light pressure applies on the back"],
     steps: [
-      { title: "Skull base", instruction: "Fingertips at the base of the skull, stretch skin downward toward the neck. ×5.", duration: 20, reps: 5, strokePath: "neck_back_R", sub: "both" },
-      { title: "Upper back → armpits", instruction: "Reach over the shoulders / to the sides and sweep the upper back skin toward the armpits. ×8.", duration: 30, reps: 8, strokePath: "back_upper_R", sub: "both" },
-      { title: "Lower back → groin", instruction: "Hands on the lower back at the waist, sweep the skin around toward the front and the groin. ×8.", duration: 30, reps: 8, strokePath: "back_lower_R", sub: "both" },
-      { title: "Clear the drains", instruction: "Finish with armpit pumps (upper) and groin pumps (lower) to receive the fluid.", duration: 25, reps: 10 }
+      { title: "Skull base", instruction: "Fingertips at the base of the skull, stretch skin downward toward the neck. ×5.", duration: 20, reps: 5, visual: { type: "stroke", paths: ["neck_back_R", "neck_back_L"], range: [0.0, 0.55] } },
+      { title: "Upper back → armpits", instruction: "Reach over the shoulders / to the sides and sweep the upper back skin toward the armpits. ×8.", duration: 30, reps: 8, visual: { type: "stroke", paths: ["back_upper_R", "back_upper_L"], range: [0.0, 1.0] } },
+      { title: "Lower back → groin", instruction: "Hands on the lower back at the waist, sweep the skin around toward the front and the groin. ×8.", duration: 30, reps: 8, visual: { type: "stroke", paths: ["back_lower_R", "back_lower_L"], range: [0.0, 1.0] } },
+      { title: "Clear the drains", instruction: "Finish with armpit pumps (upper) and groin pumps (lower) to receive the fluid.", duration: 25, reps: 10, visual: { type: "pump", nodes: ["axillary", "inguinal"] } }
     ]
   }
 ];
 
 /*
- * The recommended full-body order for a complete self-MLD session. UI uses
- * this for the "Guided full session" mode. Order matters: drains first,
- * then feed them.
+ * Recommended full-body order for a complete self-MLD session (drains first,
+ * then the limbs that feed them).
  */
 export const SESSION_ORDER = ["terminus", "neck", "axillary", "arm", "abdomen", "inguinal", "leg", "back"];
 
