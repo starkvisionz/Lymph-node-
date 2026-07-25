@@ -202,3 +202,37 @@ test.describe("Settings & keyboard (v0.2)", () => {
     expect(real, real.join("\n")).toEqual([]);
   });
 });
+
+test.describe("Knowledge base", () => {
+  test("Learn hub opens with tabs and switches content", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#info-btn");
+    await expect(page.locator("#modal")).toHaveClass(/open/);
+    await expect(page.locator(".kb-tab")).toHaveCount(8);
+    await page.click('.kb-tab[data-tab="nodes"]');
+    await expect(page.locator(".kb-diagram")).toBeVisible();
+    await page.click('.kb-tab[data-tab="regions"]');
+    await expect(page.locator(".kb-table tbody tr")).toHaveCount(8);
+    await page.click('.kb-tab[data-tab="glossary"]');
+    await expect(page.locator(".kb-term").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#modal")).not.toHaveClass(/open/);
+  });
+
+  test("zone panel shows anatomy/clinical detail and links into the hub", async ({ page }) => {
+    await bootReady(page);
+    await page.click('.zone-chip[data-id="axillary"]');
+    await expect(page.locator(".node-card")).toHaveCount(1);
+    await expect(page.locator(".node-card .nc-note")).toContainText("breast");
+    await page.click(".kb-link");
+    await expect(page.locator("#modal")).toHaveClass(/open/);
+    await expect(page.locator(".kb-tab.active")).toHaveAttribute("data-tab", "nodes");
+  });
+
+  test("safety link opens the hub on the Safety tab", async ({ page }) => {
+    await bootReady(page);
+    await page.click("#precaution-more");
+    await expect(page.locator("#modal")).toHaveClass(/open/);
+    await expect(page.locator(".kb-tab.active")).toHaveAttribute("data-tab", "safety");
+  });
+});

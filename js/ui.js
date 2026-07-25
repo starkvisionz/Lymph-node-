@@ -7,6 +7,7 @@
 import { ZONES, ZONE_BY_ID, SESSION_ORDER, GLOBAL_BENEFITS, PRECAUTIONS, PRINCIPLES } from "./data.js";
 import { settings } from "./settings.js";
 import { Voice } from "./voice.js";
+import { KB, NODE_INFO } from "./knowledge.js";
 
 export class UI {
   constructor(hooks) {
@@ -187,6 +188,26 @@ export class UI {
     this.hooks.onSelectZone(null);
   }
 
+  /* Per-zone anatomy & clinical detail, from the knowledge base. */
+  _anatomyHtml(z) {
+    const cards = (z.nodeIds || []).map(id => {
+      const info = NODE_INFO[id];
+      if (!info) return "";
+      return `<div class="node-card">
+        <div class="nc-head"><span class="nc-dot" style="background:#${z.color.toString(16).padStart(6, "0")}"></span>
+          <strong>${info.title}</strong><span class="nc-count">${info.count}</span></div>
+        <p class="nc-drains"><span>Drains</span> ${info.drains}</p>
+        <p class="nc-note">${info.note}</p>
+      </div>`;
+    }).join("");
+    if (!cards) return "";
+    return `<div class="anatomy">
+      <h4 class="section-label">◍ Anatomy &amp; clinical</h4>
+      ${cards}
+      <button type="button" class="kb-link" data-kb="nodes">Learn how lymph nodes work →</button>
+    </div>`;
+  }
+
   /* Speak the active step when voice guidance is enabled. */
   _speakCurrentStep() {
     if (!settings.get("voice") || !this.voice.available) return;
@@ -248,6 +269,8 @@ export class UI {
           <ul class="bul warn">${z.precautions.map(b => `<li>${b}</li>`).join("")}</ul>
         </div>
       </div>
+
+      ${this._anatomyHtml(z)}
     `;
 
     this.el.panel.classList.add("open");
@@ -259,6 +282,8 @@ export class UI {
     document.getElementById("btn-play").addEventListener("click", () => this.toggleStepTimer());
     this.el.panelBody.querySelectorAll(".step").forEach(li =>
       li.addEventListener("click", () => this.gotoStep(parseInt(li.dataset.i, 10))));
+    this.el.panelBody.querySelector(".kb-link")
+      ?.addEventListener("click", e => this.openKnowledge(e.currentTarget.dataset.kb));
 
     // Kick the stroke animation for this step
     this.hooks.onStep(z, step);
@@ -366,47 +391,98 @@ export class UI {
   }
 
   /* ---------- info / safety modal ---------- */
-  openInfo(tab) {
-    const principles = PRINCIPLES.map(p => `<li><strong>${p.title}.</strong> ${p.text}</li>`).join("");
-    const benefits = GLOBAL_BENEFITS.map(b => `<li>${b}</li>`).join("");
+  // Back-compat entry point; opens the knowledge hub at a given tab.
+  openInfo(tab) { this.openKnowledge(typeof tab === "string" ? tab : "overview"); }
+
+  openKnowledge(tab = "overview") {
+    const tabs = [
+      ["overview", "How it works"],
+      ["nodes", "Lymph nodes 101"],
+      ["system", "The system"],
+      ["regions", "Node regions"],
+      ["swollen", "Swollen nodes"],
+      ["faq", "FAQ"],
+      ["glossary", "Glossary"],
+      ["safety", "Safety"],
+    ];
+    const rail = tabs.map(([id, label]) =>
+      `<button class="kb-tab${id === "safety" ? " warn" : ""}" role="tab" data-tab="${id}">${label}</button>`).join("");
+
+    this.el.modalBody.innerHTML = `
+      <div class="kb">
+        <nav class="kb-rail" role="tablist" aria-label="Knowledge base">${rail}</nav>
+        <div class="kb-content" id="kb-content" role="tabpanel" tabindex="0"></div>
+      </div>`;
+
+    const setTab = id => {
+      this.el.modalBody.querySelectorAll(".kb-tab").forEach(b =>
+        b.classList.toggle("active", b.dataset.tab === id));
+      const content = document.getElementById("kb-content");
+      content.innerHTML = this._kbTab(id);
+      content.scrollTop = 0;
+    };
+    this.el.modalBody.querySelectorAll(".kb-tab").forEach(b =>
+      b.addEventListener("click", () => setTab(b.dataset.tab)));
+    setTab(tabs.some(t => t[0] === tab) ? tab : "overview");
+
+    this._lastFocus = document.activeElement;
+    this.el.modal.classList.add("open");
+    this._trapHandler = e => this._trapFocus(e);
+    this.el.modal.addEventListener("keydown", this._trapHandler);
+    requestAnimationFrame(() => this.el.modalClose.focus());
+  }
+
+  _kbTab(id) {
+    if (id === "overview") {
+      const principles = PRINCIPLES.map(p => `<li><strong>${p.title}.</strong> ${p.text}</li>`).join("");
+      const benefits = GLOBAL_BENEFITS.map(b => `<li>${b}</li>`).join("");
+      return `
+        <h2>How lymphatic drainage works</h2>
+        <p class="lead">Your lymphatic system is a one-way network of tiny vessels carrying fluid,
+        waste and immune cells from your tissues back to the bloodstream. It has no central pump — it
+        relies on muscle movement, breathing and gentle skin stretching. Manual Lymphatic Drainage
+        (MLD) uses very light, rhythmic strokes to encourage that flow toward the nodes and out at
+        the collarbones.</p>
+        <h3>The 5 principles</h3>
+        <ol class="principles">${principles}</ol>
+        <h3>General benefits</h3>
+        <ul class="bul">${benefits}</ul>`;
+    }
+    if (id === "nodes") return `<h2>${KB.nodes.title}</h2><p class="lead">${KB.nodes.lead}</p>${KB.nodes.html}`;
+    if (id === "system") return `<h2>${KB.system.title}</h2><p class="lead">${KB.system.lead}</p>${KB.system.html}`;
+    if (id === "regions") {
+      const rows = KB.regions.table.map(([r, d, t]) =>
+        `<tr><th scope="row">${r}</th><td>${d}</td><td class="kb-flow">${t}</td></tr>`).join("");
+      return `<h2>${KB.regions.title}</h2><p class="lead">${KB.regions.lead}</p>
+        <div class="kb-table-wrap"><table class="kb-table">
+          <thead><tr><th>Cluster</th><th>Drains</th><th>Flows to</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`;
+    }
+    if (id === "swollen") return `<h2>${KB.swollen.title}</h2><p class="lead">${KB.swollen.lead}</p>${KB.swollen.html}`;
+    if (id === "faq") {
+      const items = KB.faq.items.map(([q, a]) =>
+        `<details class="kb-faq"><summary>${q}</summary><p>${a}</p></details>`).join("");
+      return `<h2>${KB.faq.title}</h2>${items}`;
+    }
+    if (id === "glossary") {
+      const items = KB.glossary.items.map(([t, d]) =>
+        `<div class="kb-term"><dt>${t}</dt><dd>${d}</dd></div>`).join("");
+      return `<h2>${KB.glossary.title}</h2><dl class="kb-glossary">${items}</dl>`;
+    }
+    // safety
     const prec = PRECAUTIONS.map(p => `
       <li class="prec ${p.level}">
         <span class="prec-ico">${p.level === "stop" ? "⛔" : p.level === "care" ? "⚠︎" : "•"}</span>
         <span><strong>${p.title}.</strong> ${p.text}</span>
       </li>`).join("");
-
-    this.el.modalBody.innerHTML = `
-      <h2>How lymphatic drainage massage works</h2>
-      <p class="lead">Your lymphatic system is a one-way network of tiny vessels that carries fluid,
-      waste and immune cells from your tissues back to the bloodstream. It has no central pump —
-      it relies on muscle movement, breathing and gentle skin stretching. Manual Lymphatic Drainage
-      (MLD) uses very light, rhythmic strokes to encourage that flow toward the nodes and out at the
-      collarbones.</p>
-
-      <h3>The 5 principles</h3>
-      <ol class="principles">${principles}</ol>
-
-      <h3>General benefits</h3>
-      <ul class="bul">${benefits}</ul>
-
-      <h3 id="safety-anchor" class="warn">⚠︎ Safety &amp; contraindications</h3>
+    return `
+      <h2 class="warn">⚠︎ Safety &amp; contraindications</h2>
       <p>MLD is gentle, but it is not for everyone. <strong>When in doubt, ask a doctor or a certified
       lymphedema therapist.</strong></p>
       <ul class="prec-list">${prec}</ul>
-
       <p class="disclaimer">This guide is for general education only and is not medical advice,
       diagnosis or treatment. If you have swelling that is new, one-sided, painful, hot or red — or
-      any diagnosed medical condition — seek professional care before self-massaging.</p>
-    `;
-    this._lastFocus = document.activeElement;
-    this.el.modal.classList.add("open");
-    // Trap focus inside the dialog and move focus to the close button.
-    this._trapHandler = e => this._trapFocus(e);
-    this.el.modal.addEventListener("keydown", this._trapHandler);
-    requestAnimationFrame(() => {
-      this.el.modalClose.focus();
-      if (tab === "safety") document.getElementById("safety-anchor")?.scrollIntoView({ behavior: "smooth" });
-    });
+      any diagnosed medical condition — seek professional care before self-massaging.</p>`;
   }
 
   closeModal() {
