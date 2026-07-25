@@ -1,0 +1,15 @@
+{
+  "name": "lymph-flow",
+  "version": "0.1.0",
+  "description": "Interactive 3D lymphatic drainage (MLD) self-massage guide",
+  "type": "module",
+  "scripts": {
+    "serve": "node scripts/serve.cjs",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  },
+  "license": "MIT",
+  "private": true
+}
