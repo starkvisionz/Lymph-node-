@@ -26,6 +26,7 @@ test.describe("Lymph Flow", () => {
   });
 
   test("every drainage zone opens its step panel", async ({ page }) => {
+    test.slow(); // iterates all 8 zones — give slower CI runners headroom
     await bootReady(page);
     for (const z of ZONES) {
       await page.click(`.zone-chip[data-id="${z.id}"]`);
@@ -33,6 +34,10 @@ test.describe("Lymph Flow", () => {
       await expect(page.locator("#sa-title")).not.toHaveText("");
       // step count matches the data
       await expect(page.locator(".step")).toHaveCount(z.steps.length);
+      // Close between zones: the realistic flow, and it keeps the mobile
+      // zone-chip strip unobstructed by the bottom-sheet panel.
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#detail-panel")).not.toHaveClass(/open/);
     }
   });
 
