@@ -27,6 +27,20 @@ lymphatic network and teaches *where* to stroke, *which direction*, *how hard*,
   (drains first, then the limbs that feed them).
 - **Benefits & precautions** per region, plus a full **How it works** panel with
   the 5 MLD principles and a prominent **safety / contraindications** list.
+- **Hands-free & accessible** — optional **voice guidance** speaks each step aloud
+  (Web Speech API), keyboard shortcuts (**1–8** zones, **Space** play/pause,
+  **N/P** next/prev, **Esc** close), and a **Settings** popover (voice, sound,
+  and an animation control incl. reduce/pause) persisted to `localStorage`.
+  Dialogs trap and restore focus; `prefers-reduced-motion` is honoured.
+- **Knowledge base** — a tabbed **Learn** hub: how MLD works, *Lymph nodes 101*
+  (with an SVG node cross-section), the lymphatic system, a node-region drainage
+  reference, guidance on swollen nodes & red flags, an FAQ and a glossary. Every
+  drainage zone also carries an **Anatomy & clinical** section detailing each
+  node cluster it targets (what it drains, node counts, clinical notes).
+- **Targeted programs & progress** — condition-specific routines (Face & sinus,
+  Tired legs, Post-workout arms, Desk/travel, Gentle daily, Full body reset),
+  each a guided session over the right zones in the right order. Completed
+  sessions are tracked in `localStorage` with per-program counts and a day-streak.
 
 ## Run it
 
@@ -47,9 +61,13 @@ not `file://`).
 index.html            # shell, import map, layout
 css/styles.css        # clinical/glassmorphism theme, responsive
 js/data.js            # anatomy + MLD content (single source of truth)
-js/body.js            # builds the 3D figure, nodes, vessels, stroke arrow
+js/body.js            # builds the 3D figure, nodes, vessels, demo visuals
 js/app.js             # scene, camera, raycasting, animation loop
 js/ui.js              # panels, steps, timers, guided session, safety modal
+js/settings.js        # user preferences (voice/sound/motion), localStorage
+js/voice.js           # Web Speech (SpeechSynthesis) wrapper for narration
+js/knowledge.js       # knowledge base: node anatomy, system, regions, FAQ, glossary
+js/progress.js        # session-completion history & streak, localStorage
 vendor/three/         # Three.js r160 (vendored, so it works fully offline)
 assets/favicon.svg
 ```

@@ -332,3 +332,19 @@ export const ZONES = [
 export const SESSION_ORDER = ["terminus", "neck", "axillary", "arm", "abdomen", "inguinal", "leg", "back"];
 
 export const ZONE_BY_ID = Object.fromEntries(ZONES.map(z => [z.id, z]));
+
+/*
+ * Targeted programs — condition-specific routines. Each is an ordered subset of
+ * zones (always starting at the terminus so the drains are open first). The
+ * guided session runs whichever program you pick.
+ */
+export const PROGRAMS = [
+  { id: "full",   name: "Full body reset",      tag: "all regions · ~6 min", goal: "A complete head-to-toe drainage in the correct proximal-first order.", order: SESSION_ORDER },
+  { id: "face",   name: "Face & sinus glow",    tag: "2 regions · ~2 min",   goal: "De-puff the face and ease sinus pressure — great first thing in the morning.", order: ["terminus", "neck"] },
+  { id: "legs",   name: "Tired legs & ankles",  tag: "4 regions · ~4 min",   goal: "Relieve heavy, swollen legs after standing all day.", order: ["terminus", "abdomen", "inguinal", "leg"] },
+  { id: "arms",   name: "Post-workout arms",    tag: "3 regions · ~3 min",   goal: "Drain arm and chest heaviness after training.", order: ["terminus", "axillary", "arm"] },
+  { id: "travel", name: "Desk & travel refresh", tag: "4 regions · ~4 min",  goal: "A quick reset for long sitting or a long flight.", order: ["terminus", "neck", "inguinal", "leg"] },
+  { id: "daily",  name: "Gentle daily",         tag: "3 regions · ~2 min",   goal: "A short, calming routine you can do every day.", order: ["terminus", "neck", "abdomen"] },
+];
+
+export const PROGRAM_BY_ID = Object.fromEntries(PROGRAMS.map(p => [p.id, p]));
