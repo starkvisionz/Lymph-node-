@@ -11,6 +11,10 @@ lymphatic network and teaches *where* to stroke, *which direction*, *how hard*,
 
 - **Translucent 3D figure** you can rotate freely, with one-tap **Front / Back**
   views. Selecting a region auto-rotates the model to the face that shows it.
+- **Full touch interactivity** — drag to rotate, pinch to zoom, and **tap a
+  glowing node** to open its zone (with a touch-friendly nearest-node hit test
+  and depth bias so the front cluster wins). The canvas locks `touch-action` so
+  gestures drive the model, and overlays let taps pass through to it.
 - **Anatomical node clusters** — cervical/terminus, submandibular, axillary,
   cubital, cisterna chyli, inguinal, plus posterior clusters (occipital,
   interscapular, lumbar, popliteal) — glowing and clickable, with hover labels.

@@ -40,6 +40,15 @@ controls.minDistance = 10;
 controls.maxDistance = 40;
 controls.maxPolarAngle = Math.PI * 0.92;
 controls.minPolarAngle = Math.PI * 0.08;
+controls.enablePan = false;       // keep the figure centred (esp. two-finger touch)
+controls.rotateSpeed = 0.9;
+controls.zoomSpeed = 0.9;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }; // 1-finger rotate, 2-finger pinch-zoom
+
+// Pause the idle auto-spin while the user is actively touching/dragging.
+let userInteracting = false;
+controls.addEventListener("start", () => { userInteracting = true; });
+controls.addEventListener("end", () => { userInteracting = false; });
 
 /* ---- lights ---- */
 scene.add(new THREE.AmbientLight(0x6fb6c9, 0.7));
@@ -214,50 +223,83 @@ function viewTo(which) {
                tFrom: controls.target.clone(), tTo: new THREE.Vector3(...p.target), t: 0 };
 }
 
-/* ---- raycasting for zone picking ---- */
+/* ---- node picking (mouse + touch) ---- */
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-let hovered = null;
+const _wp = new THREE.Vector3();
 
 // Build a map from node registry id -> zone id (first zone that lists it)
 const nodeToZone = {};
 for (const z of Object.values(ZONE_BY_ID)) {
   for (const id of nodeIdsForZone(z)) if (!nodeToZone[id]) nodeToZone[id] = z.id;
 }
+const nodeMeshes = Object.values(nodeReg).map(r => r.mesh);
 
-function pick(ev, click) {
+// Precise raycast first; otherwise the nearest glowing node within a
+// touch-friendly screen radius (so fat-finger taps still land on a cluster).
+function pickNode(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
-  pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-  const meshes = Object.values(nodeReg).map(r => r.mesh);
-  const hits = raycaster.intersectObjects(meshes, false);
-  if (hits.length) {
-    const id = hits[0].object.userData.id;
-    const zoneId = nodeToZone[id];
-    if (click && zoneId) { ui.selectZone(zoneId, true); return; }
-    hovered = hits[0].object;
-    canvas.style.cursor = "pointer";
-    showTooltip(ev, hits[0].object.userData.label);
-  } else {
-    hovered = null;
-    canvas.style.cursor = "grab";
-    hideTooltip();
+  const hits = raycaster.intersectObjects(nodeMeshes, false);
+  if (hits.length) return hits[0].object.userData;
+
+  const px = clientX - rect.left, py = clientY - rect.top;
+  const radius = Math.max(36, Math.min(rect.width, rect.height) * 0.08);
+  let best = null, bestScore = Infinity;
+  for (const r of Object.values(nodeReg)) {
+    r.mesh.getWorldPosition(_wp);
+    const camDist = _wp.distanceTo(camera.position); // to prefer the node facing the camera
+    _wp.project(camera);
+    if (_wp.z > 1) continue; // behind the camera
+    const sx = (_wp.x * 0.5 + 0.5) * rect.width;
+    const sy = (-_wp.y * 0.5 + 0.5) * rect.height;
+    const d = Math.hypot(sx - px, sy - py);
+    if (d > radius) continue;
+    const score = d + camDist * 10; // on overlaps, the near-side (visible) node wins
+    if (score < bestScore) { bestScore = score; best = r.mesh.userData; }
   }
+  return best;
 }
 
-canvas.addEventListener("pointermove", e => pick(e, false));
-canvas.addEventListener("click", e => pick(e, true));
+// A tap = pointerdown + pointerup with little movement, which distinguishes a
+// selection from an orbit drag. Works identically for mouse and touch.
+let downX = 0, downY = 0, downActive = false;
+canvas.addEventListener("pointerdown", e => { downX = e.clientX; downY = e.clientY; downActive = true; });
+canvas.addEventListener("pointercancel", () => { downActive = false; });
+canvas.addEventListener("pointerup", e => {
+  if (!downActive) return;
+  downActive = false;
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 9) return; // it was a drag → let OrbitControls have it
+  const ud = pickNode(e.clientX, e.clientY);
+  if (ud && nodeToZone[ud.id]) { ui.selectZone(nodeToZone[ud.id], true); flashTip(e.clientX, e.clientY, ud.label); }
+});
+
+// Hover tooltip for pointing devices only (touch has no hover).
+canvas.addEventListener("pointermove", e => {
+  if (e.pointerType === "touch") return;
+  const ud = pickNode(e.clientX, e.clientY);
+  if (ud) { canvas.style.cursor = "pointer"; showTooltip(e.clientX, e.clientY, ud.label); }
+  else { canvas.style.cursor = "grab"; hideTooltip(); }
+});
 
 /* tooltip */
 const tip = document.getElementById("tooltip");
-function showTooltip(ev, text) {
+let tipTimer = null;
+function showTooltip(x, y, text) {
   tip.textContent = text;
-  tip.style.left = ev.clientX + 14 + "px";
-  tip.style.top = ev.clientY + 12 + "px";
+  tip.style.left = x + 14 + "px";
+  tip.style.top = y + 12 + "px";
   tip.classList.add("show");
 }
 function hideTooltip() { tip.classList.remove("show"); }
+// Brief label after a tap, since touch can't hover.
+function flashTip(x, y, text) {
+  showTooltip(x, y - 6, text);
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(hideTooltip, 1500);
+}
 
 /* ---- resize ---- */
 window.addEventListener("resize", () => {
@@ -348,8 +390,8 @@ function animate() {
     if (camTween.t >= 1) camTween = null;
   }
 
-  // gentle idle auto-rotate when nothing selected (disabled under reduced motion)
-  if (!activeZone && !camTween && !reduceMotion) {
+  // gentle idle auto-rotate when nothing selected and the user isn't dragging
+  if (!activeZone && !camTween && !userInteracting && !reduceMotion) {
     root.rotation.y += dt * 0.05;
   } else if (activeZone || camTween) {
     root.rotation.y += (0 - root.rotation.y) * Math.min(1, dt * 2);

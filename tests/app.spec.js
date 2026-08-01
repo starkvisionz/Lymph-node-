@@ -316,3 +316,35 @@ test.describe("PWA (v1.0)", () => {
     expect(real, real.join("\n")).toEqual([]);
   });
 });
+
+test.describe("Touch & pointer interaction", () => {
+  test("tapping/clicking a glowing node on the model selects a zone", async ({ page }) => {
+    // Freeze the idle rotation so node positions hold still during the scan.
+    await page.addInitScript(() =>
+      localStorage.setItem("lymphflow.settings.v1", JSON.stringify({ voice: false, sound: true, motion: "on" })));
+    await bootReady(page);
+
+    const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0 || "ontouchstart" in window);
+    const vw = page.viewportSize();
+    const xs = [0.5, 0.42, 0.58, 0.36, 0.64].map(f => Math.round(vw.width * f));
+    const ys = [];
+    for (let f = 0.34; f <= 0.72; f += 0.035) ys.push(Math.round(vw.height * f));
+
+    const isOpen = () => page.evaluate(() => document.getElementById("detail-panel")?.classList.contains("open"));
+    const modalOpen = () => page.evaluate(() => document.getElementById("modal")?.classList.contains("open"));
+
+    let selected = false;
+    outer:
+    for (const y of ys) {
+      for (const x of xs) {
+        if (hasTouch) await page.touchscreen.tap(x, y);
+        else { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.up(); }
+        await page.waitForTimeout(110);
+        if (await modalOpen()) { await page.evaluate(() => document.getElementById("modal-close")?.click()); continue; }
+        if (await isOpen()) { selected = true; break outer; }
+      }
+    }
+    expect(selected, "a tap on the model should open a drainage zone").toBeTruthy();
+    await expect(page.locator(".zone-chip.active")).toHaveCount(1);
+  });
+});
