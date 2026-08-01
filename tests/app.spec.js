@@ -274,3 +274,45 @@ test.describe("Programs & progress (v0.3)", () => {
     await expect(page.locator('.pp-item[data-prog="face"] .pp-count')).toBeVisible();
   });
 });
+
+test.describe("PWA (v1.0)", () => {
+  test("manifest is linked, served, and describes the app", async ({ page }) => {
+    await bootReady(page);
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", /manifest\.webmanifest/);
+    const resp = await page.request.get("/manifest.webmanifest");
+    expect(resp.ok()).toBeTruthy();
+    const mf = await resp.json();
+    expect(mf.name).toContain("Lymph Flow");
+    expect(mf.display).toBe("standalone");
+    expect(mf.icons.length).toBeGreaterThan(0);
+    // every icon resolves
+    for (const icon of mf.icons) {
+      const r = await page.request.get("/" + icon.src);
+      expect(r.ok(), icon.src).toBeTruthy();
+    }
+  });
+
+  test("service worker registers, controls the page, and the version is shown", async ({ page }) => {
+    await bootReady(page);
+    await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller !== null,
+      null, { timeout: 15000 });
+    const controlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
+    expect(controlled).toBeTruthy();
+    await expect(page.locator("#app-version")).toContainText("v1.0.0");
+  });
+
+  test("app boots offline from the service-worker cache", async ({ page, context }) => {
+    const errors = attachDiagnostics(page);
+    await bootReady(page);
+    await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller !== null,
+      null, { timeout: 15000 });
+    await page.waitForTimeout(1500); // let the precache settle
+    await context.setOffline(true);
+    await page.reload();
+    await expect(page.locator("#loader")).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(page.locator(".zone-chip")).toHaveCount(8); // full app booted with no network
+    await context.setOffline(false);
+    const real = errors.filter(e => !/favicon/i.test(e));
+    expect(real, real.join("\n")).toEqual([]);
+  });
+});
