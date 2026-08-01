@@ -274,3 +274,77 @@ test.describe("Programs & progress (v0.3)", () => {
     await expect(page.locator('.pp-item[data-prog="face"] .pp-count')).toBeVisible();
   });
 });
+
+test.describe("PWA (v1.0)", () => {
+  test("manifest is linked, served, and describes the app", async ({ page }) => {
+    await bootReady(page);
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", /manifest\.webmanifest/);
+    const resp = await page.request.get("/manifest.webmanifest");
+    expect(resp.ok()).toBeTruthy();
+    const mf = await resp.json();
+    expect(mf.name).toContain("Lymph Flow");
+    expect(mf.display).toBe("standalone");
+    expect(mf.icons.length).toBeGreaterThan(0);
+    // every icon resolves
+    for (const icon of mf.icons) {
+      const r = await page.request.get("/" + icon.src);
+      expect(r.ok(), icon.src).toBeTruthy();
+    }
+  });
+
+  test("service worker registers, controls the page, and the version is shown", async ({ page }) => {
+    await bootReady(page);
+    await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller !== null,
+      null, { timeout: 15000 });
+    const controlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
+    expect(controlled).toBeTruthy();
+    await expect(page.locator("#app-version")).toContainText("v1.0.0");
+  });
+
+  test("app boots offline from the service-worker cache", async ({ page, context }) => {
+    const errors = attachDiagnostics(page);
+    await bootReady(page);
+    await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller !== null,
+      null, { timeout: 15000 });
+    await page.waitForTimeout(1500); // let the precache settle
+    await context.setOffline(true);
+    await page.reload();
+    await expect(page.locator("#loader")).toHaveClass(/hidden/, { timeout: 15000 });
+    await expect(page.locator(".zone-chip")).toHaveCount(8); // full app booted with no network
+    await context.setOffline(false);
+    const real = errors.filter(e => !/favicon/i.test(e));
+    expect(real, real.join("\n")).toEqual([]);
+  });
+});
+
+test.describe("Touch & pointer interaction", () => {
+  test("tapping/clicking a glowing node on the model selects a zone", async ({ page }) => {
+    // Freeze the idle rotation so node positions hold still during the scan.
+    await page.addInitScript(() =>
+      localStorage.setItem("lymphflow.settings.v1", JSON.stringify({ voice: false, sound: true, motion: "on" })));
+    await bootReady(page);
+
+    const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0 || "ontouchstart" in window);
+    const vw = page.viewportSize();
+    const xs = [0.5, 0.42, 0.58, 0.36, 0.64].map(f => Math.round(vw.width * f));
+    const ys = [];
+    for (let f = 0.34; f <= 0.72; f += 0.035) ys.push(Math.round(vw.height * f));
+
+    const isOpen = () => page.evaluate(() => document.getElementById("detail-panel")?.classList.contains("open"));
+    const modalOpen = () => page.evaluate(() => document.getElementById("modal")?.classList.contains("open"));
+
+    let selected = false;
+    outer:
+    for (const y of ys) {
+      for (const x of xs) {
+        if (hasTouch) await page.touchscreen.tap(x, y);
+        else { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.up(); }
+        await page.waitForTimeout(110);
+        if (await modalOpen()) { await page.evaluate(() => document.getElementById("modal-close")?.click()); continue; }
+        if (await isOpen()) { selected = true; break outer; }
+      }
+    }
+    expect(selected, "a tap on the model should open a drainage zone").toBeTruthy();
+    await expect(page.locator(".zone-chip.active")).toHaveCount(1);
+  });
+});

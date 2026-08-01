@@ -11,6 +11,10 @@ lymphatic network and teaches *where* to stroke, *which direction*, *how hard*,
 
 - **Translucent 3D figure** you can rotate freely, with one-tap **Front / Back**
   views. Selecting a region auto-rotates the model to the face that shows it.
+- **Full touch interactivity** — drag to rotate, pinch to zoom, and **tap a
+  glowing node** to open its zone (with a touch-friendly nearest-node hit test
+  and depth bias so the front cluster wins). The canvas locks `touch-action` so
+  gestures drive the model, and overlays let taps pass through to it.
 - **Anatomical node clusters** — cervical/terminus, submandibular, axillary,
   cubital, cisterna chyli, inguinal, plus posterior clusters (occipital,
   interscapular, lumbar, popliteal) — glowing and clickable, with hover labels.
@@ -41,6 +45,10 @@ lymphatic network and teaches *where* to stroke, *which direction*, *how hard*,
   Tired legs, Post-workout arms, Desk/travel, Gentle daily, Full body reset),
   each a guided session over the right zones in the right order. Completed
   sessions are tracked in `localStorage` with per-program counts and a day-streak.
+- **Installable PWA / offline** — a web-app manifest and a service worker that
+  precaches the whole app shell (including the vendored Three.js), so it launches
+  **fully offline** from a phone home screen. An **Install app** button appears
+  in Settings where the browser supports it; the app version is shown there too.
 
 ## Run it
 
@@ -68,6 +76,10 @@ js/settings.js        # user preferences (voice/sound/motion), localStorage
 js/voice.js           # Web Speech (SpeechSynthesis) wrapper for narration
 js/knowledge.js       # knowledge base: node anatomy, system, regions, FAQ, glossary
 js/progress.js        # session-completion history & streak, localStorage
+js/pwa.js             # service-worker registration, install prompt, version
+js/version.js         # app version constant
+service-worker.js     # offline precache of the app shell
+manifest.webmanifest  # PWA manifest (icons, standalone display)
 vendor/three/         # Three.js r160 (vendored, so it works fully offline)
 assets/favicon.svg
 ```

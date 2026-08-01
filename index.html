@@ -7,6 +7,11 @@
   <meta name="description" content="Interactive 3D lymphatic drainage (MLD) self-massage guide — drainage zones, animated stroke directions, step-by-step instructions, timers, benefits and safety." />
   <title>Lymph Flow · 3D Lymphatic Drainage Massage Guide</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Lymph Flow" />
   <link rel="stylesheet" href="css/styles.css" />
   <!-- Three.js is vendored locally (vendor/three) so the guide is fully
        self-contained and works offline / behind restricted networks. -->
@@ -68,7 +73,9 @@
             <label><input type="radio" name="motion" id="motion-on" value="on" /> Reduce / pause</label>
           </fieldset>
           <p class="settings-note" id="voice-unavailable" hidden>Voice isn't available in this browser.</p>
+          <button id="install-btn" class="install-btn" hidden>⬇ Install app</button>
           <p class="settings-note">⌨︎ Shortcuts: <kbd>1</kbd>–<kbd>8</kbd> zones · <kbd>Space</kbd> play/pause · <kbd>N</kbd>/<kbd>P</kbd> next/prev · <kbd>Esc</kbd> close</p>
+          <p class="settings-note version" id="app-version"></p>
         </div>
       </div>
     </div>
@@ -97,7 +104,8 @@
   <!-- Floating hint -->
   <div id="hint" class="hint">
     <span class="hint-ico">◍</span>
-    Drag to rotate · scroll to zoom · click a glowing node
+    <span class="hint-desktop">Drag to rotate · scroll to zoom · click a glowing node</span>
+    <span class="hint-touch">Drag to rotate · pinch to zoom · tap a glowing node</span>
   </div>
 
   <!-- Right detail panel -->
@@ -118,5 +126,6 @@
   <div id="tooltip" class="tooltip"></div>
 
   <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/pwa.js"></script>
 </body>
 </html>
